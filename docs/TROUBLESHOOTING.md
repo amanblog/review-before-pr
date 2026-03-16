@@ -288,10 +288,14 @@ chmod +x .cursor/skills/review-before-pr/scripts/filters/secret_detector.py
 **Symptoms:**
 - Files still appear in diff despite ignore patterns
 - Exclusions don't take effect
+- **package-lock.json or other lock files appear** when they should be excluded
 
 **Solutions:**
 
-1. **Test glob patterns:**
+1. **Pathspec parsing (lock files still in diff):**  
+   Git can misparse `:!` pathspecs when patterns contain certain characters (e.g. `__pycache__`). The bundled scripts use `:(exclude)` instead of `:!` to avoid this. If you see default-excluded files (like `package-lock.json`) in the diff, ensure you're using the latest `generate_diff.sh` / `generate_diff.py` from the skill (they use `:(exclude)` throughout).
+
+2. **Test glob patterns:**
    ```bash
    # See what files match your pattern
    git ls-files | grep "your-pattern"
@@ -312,9 +316,9 @@ chmod +x .cursor/skills/review-before-pr/scripts/filters/secret_detector.py
    "ignorePatterns": ["src/generated/**"]
    ```
 
-4. **Use git pathspec for complex patterns:**
+4. **Use git pathspec for complex patterns (prefer `:(exclude)` over `:!`):**
    ```json
-   "additionalExcludes": [":!**/test-fixtures/**"]
+   "additionalExcludes": [":(exclude)**/test-fixtures/**"]
    ```
 
 ---

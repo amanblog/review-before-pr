@@ -70,7 +70,8 @@ if [[ -f "$CONFIG_FILE" ]]; then
   # Parse JSON config for additional excludes (simple grep-based parsing)
   # Note: For complex JSON parsing, use jq if available
   if command -v jq &> /dev/null; then
-    ADDITIONAL_PATTERNS=$(jq -r '.ignorePatterns[]? // empty' "$CONFIG_FILE" 2>/dev/null | sed 's/^/:!**\//')
+    # Use :(exclude) to avoid pathspec magic issues (e.g. :! with __pycache__ can break exclusions)
+    ADDITIONAL_PATTERNS=$(jq -r '.ignorePatterns[]? // empty' "$CONFIG_FILE" 2>/dev/null | sed 's/^/:(exclude)**\//')
     if [[ -n "$ADDITIONAL_PATTERNS" ]]; then
       while IFS= read -r pattern; do
         EXCLUDES+=("$pattern")

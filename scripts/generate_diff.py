@@ -97,8 +97,10 @@ class DiffGenerator:
                 excludes.extend(custom_patterns)
                 print(f"Loaded {len(custom_patterns)} custom ignore patterns", file=sys.stderr)
         
-        # Convert to git pathspec format
-        return [f':!{pattern}' for pattern in excludes]
+        # Convert to git pathspec format. Use :(exclude) instead of :! to avoid
+        # pathspec magic parsing issues (e.g. patterns like __pycache__/** can
+        # cause :! to be misinterpreted and break exclusions including lock files).
+        return [f':(exclude){pattern}' for pattern in excludes]
     
     def _setup_review_dir(self) -> None:
         """Create .review directory and update .gitignore"""
