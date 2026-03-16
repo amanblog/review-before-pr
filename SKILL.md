@@ -23,21 +23,21 @@ If the user has not already created a diff file, run the bundled script from the
 
 ```bash
 # Committed changes only (branch vs branch) — default output: .review/diff.txt
-<skill-dir>/scripts/generate_diff.sh <base-branch> <feature-branch>
+bash "<skill-dir>/scripts/generate_diff.sh" <base-branch> <feature-branch>
 
 # Staged changes only (what's in the index vs HEAD)
-<skill-dir>/scripts/generate_diff.sh --staged
+bash "<skill-dir>/scripts/generate_diff.sh" --staged
 
 # All local changes (staged + unstaged vs HEAD)
-<skill-dir>/scripts/generate_diff.sh --local
+bash "<skill-dir>/scripts/generate_diff.sh" --local
 
 # Custom output path (e.g. for review doc later)
-<skill-dir>/scripts/generate_diff.sh develop my-branch .review/my-pr.txt
+bash "<skill-dir>/scripts/generate_diff.sh" develop my-branch .review/my-pr.txt
 ```
 
 Replace `<skill-dir>` with the actual path to this skill on the user's system (see the skill's README for per-agent install paths).
 
-Or manually (output will be tracked unless you write to `.review/` or another ignored path):
+Or manually (output will be tracked unless you write to `.review/` or another ignored path, and note this does **not** apply the same ignore/secret rules as `generate_diff.sh`):
 
 ```bash
 git --no-pager diff <base-branch>..<feature-branch> > .review/diff.txt
