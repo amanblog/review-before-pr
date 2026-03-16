@@ -36,29 +36,59 @@ fi
 
 # Default exclusion patterns (industry standard - filters noise from diffs)
 EXCLUDES=(
-  # Lock files
-  ':!**/*lock.json' ':!**/*lock.yaml' ':!**/*.lock'
-  ':!**/package-lock.json' ':!**/yarn.lock' ':!**/pnpm-lock.yaml'
-  ':!**/Gemfile.lock' ':!**/poetry.lock' ':!**/Cargo.lock'
-  ':!**/composer.lock' ':!**/Pipfile.lock' ':!**/go.sum'
-  
-  # Binary & media files
-  ':!**/*.svg' ':!**/*.png' ':!**/*.jpg' ':!**/*.jpeg' 
-  ':!**/*.gif' ':!**/*.ico' ':!**/*.webp' ':!**/*.pdf'
-  ':!**/*.woff' ':!**/*.woff2' ':!**/*.ttf' ':!**/*.eot'
-  
-  # Minified/compiled files
-  ':!**/*.min.js' ':!**/*.min.css' ':!**/*.bundle.js'
-  ':!**/*.chunk.js' ':!**/*.chunk.css'
-  
+  # Lock files (root + nested)
+  ':(exclude)*lock.json'
+  ':(exclude)**/*lock.json'
+  ':(exclude)yarn.lock'
+  ':(exclude)**/yarn.lock'
+  # ... other lockfiles ...
+  # Binary & media files (anywhere)
+  ':(exclude)**/*.svg'
+  ':(exclude)**/*.png'
+  ':(exclude)**/*.jpg'
+  ':(exclude)**/*.jpeg'
+  ':(exclude)**/*.gif'
+  ':(exclude)**/*.ico'
+  ':(exclude)**/*.webp'
+  ':(exclude)**/*.pdf'
+  # Fonts
+  ':(exclude)**/*.woff'
+  ':(exclude)**/*.woff2'
+  ':(exclude)**/*.ttf'
+  ':(exclude)**/*.eot'
   # Build outputs & dependencies
-  ':!dist/**' ':!build/**' ':!out/**' ':!.next/**'
-  ':!node_modules/**' ':!vendor/**' ':!target/**'
-  ':!__pycache__/**' ':!*.pyc' ':!.venv/**'
-  
+  ':(exclude)dist/**'
+  ':(exclude)build/**'
+  ':(exclude)out/**'
+  ':(exclude).next/**'
+  ':(exclude)node_modules/**'
+  ':(exclude)vendor/**'
+  ':(exclude)target/**'
+  ':(exclude)**/__pycache__/**'
+  ':(exclude)**/*.pyc'
+  ':(exclude)**/.venv/**'
   # Logs & temp files
-  ':!*.log' ':!*.tmp' ':!*.cache' ':!.DS_Store'
+  ':(exclude)**/*.log'
+  ':(exclude)**/*.tmp'
+  ':(exclude)**/*.cache'
+  ':(exclude).DS_Store'
 )
+
+# Detect git versions that don't support these advanced :(exclude) pathspecs
+# (older git versions may error with: "Unimplemented pathspec magic '_'")
+if [[ ${#EXCLUDES[@]} -gt 0 ]]; then
+  PATHSPEC_TEST_ERR="$REVIEW_DIR/.pathspec_test_err"
+  # Try a no-op diff using one exclude; if it fails with "Unimplemented pathspec magic",
+  # fall back to an unfiltered diff and warn the user.
+  if ! git --no-pager diff --no-index -- /dev/null /dev/null "${EXCLUDES[0]}" >/dev/null 2>"$PATHSPEC_TEST_ERR"; then
+    if grep -q 'Unimplemented pathspec magic' "$PATHSPEC_TEST_ERR" 2>/dev/null; then
+      echo "Warning: your git version does not support advanced ':(exclude)' pathspec filters." >&2
+      echo "Diff will be generated **without** lockfile/media/build/__pycache__/venv filters." >&2
+      EXCLUDES=()
+    fi
+  fi
+  rm -f "$PATHSPEC_TEST_ERR"
+fi
 
 # Load custom configuration if exists
 CONFIG_FILE="$REPO_ROOT/.reviewrc"
