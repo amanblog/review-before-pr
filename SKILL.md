@@ -50,9 +50,30 @@ git --no-pager diff <base-branch>..<feature-branch> > .review/diff.txt
 
 If the user already provided a diff (pasted or attached), skip to Step 2.
 
+### Step 1.5: Load Configuration (NEW)
+
+Before analyzing, check for a `.reviewrc` configuration file in the project root:
+
+```bash
+# Check if config exists
+if [ -f .reviewrc ]; then
+  # Config is already loaded by the diff script
+  # Review settings are available for customization
+fi
+```
+
+The configuration file allows users to:
+- Customize ignore patterns
+- Enable/disable secret detection
+- Set review categories
+- Configure output format
+- Control metrics tracking
+
 ### Step 2: Analyze the diff
 
-First, read the checklist at **`references/REVIEW_CHECKLIST.md`** (relative to this skill's directory) to load the review categories. Then review the diff using the applicable sections (frontend, backend, or general as appropriate for the repo). Focus on:
+First, read the checklist at **`references/REVIEW_CHECKLIST.md`** (relative to this skill's directory) to load the review categories. This checklist follows Google, Meta, and Microsoft engineering standards with explicit priority syntax and few-shot examples.
+
+Then review the diff using the applicable sections (frontend, backend, or general as appropriate for the repo). Focus on:
 
 - **Design** — Do the changes fit the codebase? Do they integrate well with the rest of the system? Is complexity justified? ([Google eng-practices](https://google.github.io/eng-practices/review/reviewer/looking-for.html))
 - **Functionality** — Does the code do what was intended? Edge cases, concurrency/races, and off-by-one or wrong conditions.
@@ -67,6 +88,37 @@ First, read the checklist at **`references/REVIEW_CHECKLIST.md`** (relative to t
 For **frontend** repos, also consider: semantic HTML, CSS practices, JS/React patterns (hooks, keys, async cleanup), accessibility, i18n, and bundle/performance. For **backend**, consider: idempotency, transactions, input validation, error mapping, and logging. Use the checklist in `references/REVIEW_CHECKLIST.md` (same skill directory) for the relevant stack.
 
 **Large diffs (5,000+ lines):** Summarize findings by file or module rather than reviewing line-by-line. Prioritize critical and high-priority items; group medium-priority items by theme. Note in the review doc that a full line-by-line review was not feasible due to diff size.
+
+### Step 2.5: Context Gathering (NEW)
+
+After reading the diff but before finalizing your analysis, proactively gather context:
+
+1. **Identify modified exports**: Search for changed function/type signatures
+   ```
+   Example: If diff shows "export function getUser(id: string, includeDeleted: boolean)"
+   Action: Search codebase for "getUser(" to find all call sites
+   Check: Do they pass the new boolean parameter?
+   ```
+
+2. **Find call sites**: Use grep/search to find where modified functions are used
+   ```bash
+   # Search for function usage
+   grep -r "functionName(" --include="*.ts" --include="*.tsx"
+   ```
+
+3. **Check related files**: Read middleware, schemas, tests related to changes
+   ```
+   Example: If auth.ts changes, read:
+   - src/middleware/auth.ts (likely uses these functions)
+   - src/auth/__tests__/auth.test.ts (test coverage)
+   ```
+
+4. **Gather architecture context**: Understand the broader system
+   - If database models change, check for migrations
+   - If API endpoints change, verify client code compatibility
+   - If types change, check for breaking changes in dependents
+
+This prevents "missing context" errors where you flag issues that are actually handled elsewhere in the codebase.
 
 ### Step 3: Produce the review document
 
@@ -83,20 +135,66 @@ Create **one markdown file**. By default write it under **`.review/`** so it is 
 - Do **not** edit the user's source files unless they explicitly ask you to apply a fix.
 - Each finding: **File**, **Issue**, and **Suggested change** (code snippet in the doc).
 
+### Step 3.5: Generate Patch File (NEW - Optional)
+
+If the user says "apply fix #2" or "generate patch for security fixes":
+
+1. Extract the suggested code from the review doc
+2. Create a unified diff patch: `.review/patches/fixes-<timestamp>.patch`
+3. Show patch preview to user:
+   ```bash
+   git apply --stat .review/patches/fixes-<timestamp>.patch
+   ```
+4. Ask for confirmation before applying
+5. Apply with: `git apply .review/patches/fixes-<timestamp>.patch`
+6. Provide rollback command: `git apply -R .review/patches/fixes-<timestamp>.patch`
+
+**Safety rules:**
+- NEVER auto-apply without user confirmation
+- One fix at a time (or one category like "all Critical")
+- Always generate patch first, apply second
+- Provide rollback command
+
+### Step 4: Track Metrics (NEW)
+
+After generating the review, append to `.review/metrics.jsonl`:
+
+```json
+{"timestamp": "2026-03-16T10:30:00Z", "branch": "feature-auth", "mode": "branch", "base": "main", "diff_lines": 342, "files_changed": 12, "findings": {"critical": 2, "high": 5, "medium": 8, "positive": 3}, "secrets_detected": 0, "duration_seconds": 45}
+```
+
+This allows users to track review patterns over time and measure code quality improvements.
+
 ## Output template
 
-Use this structure in the generated review doc:
+Use this structure in the generated review doc (follow the priority syntax from the checklist):
 
 ```markdown
 # Code review: <feature-branch> vs <base-branch>
 
+**Generated:** YYYY-MM-DD HH:MM:SS  
+**Diff size:** X lines across Y files  
+**Duration:** Z seconds
+
+---
+
 ## Critical
-- **File:** `path/to/file.ext`
-  - **Issue:** …
-  - **Suggested fix:**
-    ```lang
-    // code here, in doc only
-    ```
+
+### 1. Brief description
+
+**File:** `path/to/file.ext:line_number`
+
+**Issue:** Clear explanation of the problem and its impact.
+
+**Suggested fix:**
+```lang
+// Exact code to replace or add
+// Must be copy-paste ready
+```
+
+**Why this matters:** Brief context on business/technical impact.
+
+---
 
 ## High priority
 …
@@ -105,7 +203,21 @@ Use this structure in the generated review doc:
 …
 
 ## Positive notes
+
+✅ **Category** - What was done well
+
 …
+
+---
+
+## Summary
+
+**Total findings:** X (Y Critical, Z High, W Medium)  
+**Positive notes:** N
+
+**Recommendation:** Fix the Critical issues before merging. High priority items should also be addressed.
+
+**Overall:** This change [improves/maintains/degrades] code health by [explanation].
 ```
 
 ## Quick start

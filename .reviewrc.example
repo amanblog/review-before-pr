@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "baseBranch": "main",
+  "ignorePatterns": [
+    "*.lock",
+    "dist/*",
+    "*.min.js",
+    "*.generated.ts",
+    "migrations/*"
+  ],
+  "additionalExcludes": [],
+  "secretPatterns": {
+    "enabled": true,
+    "customPatterns": []
+  },
+  "review": {
+    "categories": [
+      "security",
+      "performance",
+      "maintainability"
+    ],
+    "commentPriorities": true,
+    "contextGathering": true
+  },
+  "output": {
+    "format": "markdown",
+    "includeMetrics": true,
+    "timestampReports": true
+  },
+  "patches": {
+    "autoGenerate": false,
+    "requireConfirmation": true
+  }
+}

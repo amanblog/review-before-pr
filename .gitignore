@@ -1,1 +1,8 @@
 .DS_Store
+.review/
+*.pyc
+__pycache__/
+.venv/
+venv/
+*.log
+*.tmp
