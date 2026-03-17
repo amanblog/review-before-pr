@@ -1,140 +1,277 @@
-# Code review checklist (generic)
+# Code Review Checklist v2.0 — Elite Edition
 
-Use this when running the review-before-pr skill. Apply the sections that match the repo (frontend, backend, or both). These categories are aligned with common industry and community practice (see references below).
-
----
-
-## General (any stack)
-
-Based on [Google's "What to look for in a code review"](https://google.github.io/eng-practices/review/reviewer/looking-for.html) and common team checklists.
-
-### Design
-- [ ] Does the change belong in this codebase and integrate well with the rest of the system?
-- [ ] Is the design clear at the level of the CL (files, functions, modules)?
-- [ ] Is complexity justified, or is the code more complex than it needs to be?
-- [ ] Is the author solving a current problem rather than speculative future ones (no over-engineering)?
-
-### Functionality
-- [ ] Does the code do what was intended and is that intent correct for users/developers?
-- [ ] Edge cases: null/undefined, empty collections, boundary values.
-- [ ] Concurrency: race conditions, deadlocks, or shared mutable state?
-- [ ] Error paths and failure modes handled (network, validation, external services)?
-
-### Complexity
-- [ ] Can readers understand the code quickly?
-- [ ] Are functions/classes/files a reasonable size, or do they need to be broken up?
-- [ ] Avoid unnecessary abstraction or "clever" code.
-
-### Tests
-- [ ] Are there unit, integration, or e2e tests as appropriate for the change?
-- [ ] Do the tests actually fail when the code is broken (no false positives)?
-- [ ] Are tests readable and maintainable (no unnecessary complexity)?
-
-### Naming & comments
-- [ ] Names clearly communicate what things are or do, without being overly long.
-- [ ] Comments explain *why* where necessary; avoid comments that only restate *what* the code does.
-- [ ] Stale TODOs or misleading comments removed or updated.
-
-### Style & consistency
-- [ ] Matches the project's style guide and existing patterns.
-- [ ] No large, unrelated style or formatting changes mixed with functional changes.
-- [ ] If the style guide and existing code conflict, prefer the style guide and add a TODO to fix the rest.
-
-### Documentation
-- [ ] If behavior, APIs, or setup change, is documentation (README, API docs, runbooks) updated?
-- [ ] If code is removed or deprecated, is related documentation removed or updated?
+*Based on Google, Microsoft, Meta, Netflix, and Stripe engineering standards*
 
 ---
 
-## Frontend (React / TS / Vite / similar)
+## Meta-Instruction for AI Reviewers
 
-Synthesized from [Graphite](https://graphite.dev/guides/best-practices-reviewing-front-end-code), [DEV Community](https://dev.to/padmajothi_athimoolam_23d/react-code-review-essentials-a-detailed-checklist-for-developers-20n2), [Better Programming](https://betterprogramming.pub/what-you-should-inspect-in-a-front-end-code-review-4010e1bc285a), and [Wayne Thompson's React checklist](https://www.waynethompson.com.au/blog/React-Code-Review-Checklist/).
+**Core Philosophy (Google Standard):**
 
-### Correctness & bugs
-- [ ] **Hooks**: Rules of hooks (only at top level; no conditionals/loops); dependency arrays complete and stable.
-- [ ] **Async + lifecycle**: No setState (or equivalent) after unmount; use a cancelled flag, AbortController, or cleanup to ignore stale results.
-- [ ] **Resource cleanup**: Any created resources (e.g. `URL.createObjectURL`, subscriptions, timers) are released in cleanup or when replaced.
-- [ ] **Lists**: Stable, unique keys; avoid index-as-key when the list can reorder or change.
-- [ ] **Optional props**: Documented defaults applied in destructuring or component logic so callers get consistent behavior.
+> Approve changes that **improve overall code health**, even if not perfect.  
+> Favor continuous improvement over perfection.
 
-### Security
-- [ ] No secrets, API keys, or tokens in client code or in the diff.
-- [ ] User input is escaped or sanitized; no unsanitized use of `dangerouslySetInnerHTML` (or equivalent).
-- [ ] Protected routes and auth checks still apply; no logic that bypasses authentication or authorization.
+**Review Layers (Meta Engineering):**
 
-### Edge cases & error handling
-- [ ] Null/undefined guarded (optional chaining, early returns, or explicit checks).
-- [ ] Empty and loading states handled; no blank or broken UI when data is missing or slow.
-- [ ] Network and API failures handled; no unhandled promise rejections or silent failures in the diff.
-- [ ] When inferring types (e.g. from URL or response), wrong or missing server metadata (e.g. Content-Type) is handled.
+1. **Design & architecture** FIRST
+2. **Security & correctness** SECOND  
+3. **Performance & maintainability** THIRD
+4. **Style & nits** LAST (only if blocking)
+
+**Comment Priority Syntax (Esri + Industry):**
+
+- `[Critical]` - Blocks merge (security, data loss, broken functionality)
+- `[High]` - Should fix (logic errors, important edge cases)
+- `[Medium]` - Good to address (refactors, consistency)
+- `[Nit]` - Optional style preference
+- `[Positive]` - Well done! (always include these)
+
+---
+
+## Few-Shot Examples (Gemini Method)
+
+### ❌ BAD Review Comment
+
+> "Consider using a ternary operator here instead of an if/else block."
+
+**Why bad:** Subjective style nitpick with no impact on code health.
+
+### ✅ GOOD Review Comment
+
+> **[Critical]** `auth.ts:45` - The `getUser` function does not handle the case where the database connection drops, causing an unhandled promise rejection. This will crash the server in production.
+> 
+> **Suggested fix:**
+> ```typescript
+> try {
+>   const user = await db.query('SELECT * FROM users WHERE id = ?', [userId]);
+>   return user;
+> } catch (error) {
+>   logger.error('DB connection failed', { userId, error });
+>   throw new ServiceUnavailableError('Database temporarily unavailable');
+> }
+> ```
+> 
+> **Why this matters:** Database connection failures are common in production (network issues, maintenance windows). Without proper error handling, this will cause server crashes and poor user experience.
+
+**Why good:** Specific location, clear impact, actionable fix with code, explains business impact.
+
+---
+
+## General (All Stacks)
+
+### 1. Code Health Mindset (Google + Microsoft)
+
+- [ ] Does this change **improve** overall code health?
+- [ ] Would future developers be happy this exists?
+- [ ] Is complexity justified for **current** needs (not speculative future)?
+
+### 2. Design & Architecture (Google #1 Priority)
+
+- [ ] **Every Line Rule**: Have you looked at every line of human-written code?
+- [ ] Does it belong here or in a shared module/library?
+- [ ] Integrates cleanly with existing system?
+- [ ] No over-engineering for problems that don't exist yet?
+- [ ] Single responsibility principle followed?
+
+### 3. Functionality & Correctness (Meta Tracing Method)
+
+- [ ] **Trace critical paths line-by-line** (auth, payments, data mutations)
+- [ ] Edge cases: null/undefined, empty collections, boundary values
+- [ ] Concurrency: race conditions, deadlocks, shared mutable state
+- [ ] Error paths: network failures, validation errors, external service failures
+- [ ] Off-by-one errors, wrong loop conditions
+
+### 4. Security (OWASP + Industry)
+
+- [ ] **Input validation**: All user inputs sanitized at entry points?
+- [ ] **Authentication/Authorization**: Checks present? No privilege escalation?
+- [ ] **Secrets**: No hardcoded API keys, passwords, tokens?
+- [ ] **Injection**: SQL/NoSQL/Command injection prevented (parameterized queries)?
+- [ ] **Logging**: No PII or secrets in logs? Safe error messages?
+
+### 5. Tests (Google + Microsoft)
+
+- [ ] Appropriate tests added in same change (unit/integration/e2e)?
+- [ ] Tests actually fail when code breaks (no false positives)?
+- [ ] Edge cases and failure modes tested?
+- [ ] Tests readable and maintainable?
+
+### 6. Performance (Senior Engineer Standards)
+
+- [ ] No N+1 queries or obvious performance regressions?
+- [ ] Expensive operations inside loops?
+- [ ] Missing indexes on database queries?
+- [ ] Caching opportunities where appropriate?
+- [ ] Memory leaks possible (unclosed resources)?
+
+### 7. Readability & Maintainability
+
+- [ ] Can another developer understand this quickly?
+- [ ] Functions/classes reasonable size (not god objects)?
+- [ ] Naming clear and communicative?
+- [ ] Comments explain *why*, not *what*?
+- [ ] No unnecessary abstraction or "clever" code?
+
+### 8. Style & Consistency
+
+- [ ] Matches project style guide and existing patterns?
+- [ ] No unrelated formatting changes mixed in?
+- [ ] Linter/formatter rules followed?
+
+### 9. Documentation
+
+- [ ] APIs, behavior changes documented?
+- [ ] README/setup docs updated if needed?
+- [ ] Stale docs removed?
+
+---
+
+## Frontend-Specific (React/TS/Next.js)
+
+### React Hooks & Lifecycle
+
+- [ ] Rules of hooks followed (top-level only, no conditionals)?
+- [ ] Dependency arrays complete and stable?
+- [ ] No setState after unmount (cleanup with AbortController)?
+- [ ] Resource cleanup (timers, subscriptions, object URLs)?
+
+### Lists & Keys
+
+- [ ] Stable, unique keys (not index-as-key on dynamic lists)?
+
+### Error & Loading States
+
+- [ ] Empty/loading/error states handled?
+- [ ] Suspense fallbacks visible (not null)?
+- [ ] No unhandled promise rejections?
+
+### Accessibility (WCAG 2.1 AA)
+
+- [ ] Semantic HTML (`header`, `main`, `nav` not just `div`)?
+- [ ] ARIA roles/labels where needed?
+- [ ] Keyboard navigation works?
+- [ ] Form inputs have labels?
+- [ ] Color contrast sufficient?
 
 ### Performance
-- [ ] Lazy-loaded routes or components have a visible Suspense fallback (e.g. spinner or skeleton), not `null`.
-- [ ] Heavy libraries or large modules loaded on demand where appropriate; main bundle not bloated unnecessarily.
-- [ ] Unnecessary re-renders or missing memoization only called out when clearly in scope of the change.
 
-### Code quality & consistency
-- [ ] Duplication: repeated logic extracted to shared utilities or components where it appears in multiple places.
-- [ ] Naming: clear and consistent with the rest of the codebase.
-- [ ] Error handling: no empty catch blocks that swallow errors without logging or user feedback.
-- [ ] i18n: user-facing strings use translation keys; removed keys are not still referenced elsewhere.
-
-### HTML & semantics
-- [ ] Semantic HTML used where appropriate (`header`, `main`, `section`, `article`, `nav`, etc.) instead of only `div`/`span`.
-- [ ] ARIA roles and attributes used where needed for screen readers and assistive tech.
-
-### CSS (when CSS changes are in the diff)
-- [ ] Styles scoped appropriately; no unintended side effects on other components.
-- [ ] Responsive behavior and media queries consistent with the rest of the app.
-- [ ] Naming (e.g. BEM or project convention) and specificity (e.g. prefer classes over IDs for styling) consistent.
-
-### Accessibility (when UI changes are in the diff)
-- [ ] Interactive elements are focusable and keyboard-navigable; focus not trapped without a way to escape.
-- [ ] Form inputs have associated labels or `aria-label`.
-- [ ] Link and button text is descriptive (avoid "click here").
-- [ ] Images have appropriate `alt` text; color contrast sufficient for text.
-
-### Cross-browser & standards (when relevant)
-- [ ] Polyfills or fallbacks for unsupported features if the project supports older browsers.
-- [ ] No reliance on non-standard or deprecated APIs without a fallback.
-
----
-
-## Backend (API / services / data layer)
-
-Common themes from security and backend review checklists (e.g. [Bito](https://bito.ai/blog/code-review-checklist), [Dualite](https://dualite.dev/blog/secure-code-review-checklist)).
-
-### Correctness & bugs
-- [ ] **Idempotency**: Mutating operations that should be retry-safe use idempotency keys or upsert-style logic where required.
-- [ ] **Transactions**: Multi-step DB or external calls use transactions or compensating logic where consistency is required.
-- [ ] **Concurrency**: Race conditions (e.g. double booking, duplicate creation) considered and mitigated.
+- [ ] Lazy loading with proper fallbacks?
+- [ ] No unnecessary re-renders?
+- [ ] Bundle size impact considered?
 
 ### Security
-- [ ] **Input**: All inputs validated and sanitized; no raw user input in queries or commands (injection-safe).
-- [ ] **Authz**: Every protected endpoint or operation checks permissions; no privilege escalation paths.
-- [ ] **Logging**: No PII or secrets in logs; error messages do not leak internal details to clients.
 
-### Edge cases & errors
-- [ ] Errors mapped to safe HTTP status codes and user-facing messages; no stack traces or internal details exposed.
-- [ ] Timeouts and limits on long-running or bulk operations to avoid resource exhaustion.
-
-### Code quality & consistency
-- [ ] Single responsibility; avoid god functions or modules.
-- [ ] Fail fast: invalid state or input rejected early with clear errors.
-- [ ] Consistency with existing service/repository patterns in the repo.
+- [ ] No `dangerouslySetInnerHTML` without sanitization?
+- [ ] Protected routes have auth checks?
+- [ ] No secrets in client code?
 
 ---
 
-## How to use this checklist
+## Backend-Specific (API/Services/Data)
 
-- **Prefer actionable feedback**: Report items with **file + location + suggested code in the review doc** where it helps.
-- **Don't nitpick**: Skip style points already enforced by linter/formatter unless they affect readability or consistency.
-- **Call out positives**: Note good design, clear naming, solid tests, and helpful abstractions ([Google: "Good Things"](https://google.github.io/eng-practices/review/reviewer/looking-for.html#good-things)).
-- **Context**: Consider the whole file and system; flag changes that worsen overall code health even if locally they look small.
+### Correctness
 
-### Further reading
+- [ ] **Idempotency**: Retry-safe operations use idempotency keys?
+- [ ] **Transactions**: Multi-step operations use transactions?
+- [ ] **Concurrency**: Race conditions mitigated (locks, optimistic locking)?
 
-- [Google eng-practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-- [Graphite: Best practices for reviewing front-end code](https://graphite.dev/guides/best-practices-reviewing-front-end-code)
-- [DEV: React code review essentials](https://dev.to/padmajothi_athimoolam_23d/react-code-review-essentials-a-detailed-checklist-for-developers-20n2)
-- [Code review checklist: 40 questions (Augment)](https://www.augmentcode.com/guides/code-review-checklist-40-questions-before-you-approve)
+### Security
+
+- [ ] **Input validation**: All inputs validated/sanitized at entry?
+- [ ] **Authorization**: Every protected endpoint checks permissions?
+- [ ] **SQL Injection**: Parameterized queries used?
+- [ ] **Error responses**: No stack traces or internal details exposed?
+
+### Error Handling
+
+- [ ] Timeouts on external calls?
+- [ ] Rate limiting where appropriate?
+- [ ] Graceful degradation on failures?
+
+### Logging & Observability
+
+- [ ] Useful logs at appropriate levels?
+- [ ] No PII in logs?
+- [ ] Correlation IDs for request tracing?
+
+---
+
+## Positive Notes (Google "Good Things")
+
+**Always call out:**
+
+- Elegant design solutions
+- Excellent test coverage
+- Clear naming conventions
+- Helpful abstractions
+- Performance optimizations
+- Security best practices
+- Knowledge-sharing comments
+
+---
+
+## Change Size Guidance (Meta/Google)
+
+**Ideal:** ≤ 400 lines of meaningful change  
+**Maximum:** 1000 lines (beyond this, review effectiveness drops 75%)
+
+**If diff is too large:**
+
+> **[Medium]** This change is quite large (X lines). Consider breaking into smaller, logical PRs:
+> 
+> 1. Core functionality
+> 2. Tests
+> 3. Documentation
+> 
+> Smaller changes are easier to review thoroughly and safer to merge.
+
+---
+
+## Context Gathering Instructions (Gemini Method)
+
+**For AI Reviewers:**
+
+When reviewing a diff, you lack full context. You MUST proactively search:
+
+1. **Modified exports**: If a function/type signature changes, search where it's imported
+2. **New dependencies**: If unfamiliar modules imported, read those files first  
+3. **Database schemas**: If Prisma/TypeORM models change, check migrations
+4. **API contracts**: If endpoints change, verify client code compatibility
+
+**Example:**
+
+```
+Diff shows: export function getUser(id: string, includeDeleted: boolean)
+Action: Search codebase for "getUser(" to find all call sites
+Check: Do they pass the new boolean parameter?
+```
+
+---
+
+## Output Format Requirements
+
+### For Each Finding:
+
+**[Priority] Category: Brief description**
+
+**File:** `path/to/file.ext:line_number`
+
+**Issue:** Clear explanation of the problem and its impact.
+
+**Suggested fix:**
+
+```language
+// Exact code to replace or add
+// Must be copy-paste ready
+```
+
+**Why this matters:** Brief context on business/technical impact.
+
+---
+
+## Further Reading
+
+- [Google: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
+- [Google: Standard of Code Review](https://google.github.io/eng-practices/review/reviewer/standard.html)
+- [Microsoft Research: Code Review Best Practices (Michaela Greiler)](https://www.michaelagreiler.com/code-reviews-at-microsoft-how-to-code-review-at-a-large-software-company/)
+- [Meta Engineering: Fast Reviews](https://engineering.fb.com/2022/11/16/culture/meta-code-review-time-improving-developer-experience/)

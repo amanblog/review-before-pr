@@ -11,6 +11,10 @@
 # All local changes (staged + unstaged vs HEAD):
 #   generate_diff.sh --local [output-file]
 #
+# Options:
+#   --allow-secrets    Disable secret detection (use with caution)
+#   --no-filter        Disable noise filtering (include all files)
+#
 # Default output: .review/diff.txt (directory .review/ is in .gitignore)
 #
 set -e
@@ -30,15 +34,126 @@ if ! grep -qxF '.review/' "$REPO_ROOT/.gitignore" 2>/dev/null; then
   echo "Added .review/ to .gitignore" >&2
 fi
 
+# Default exclusion patterns (industry standard - filters noise from diffs)
+EXCLUDES=(
+  # Lock files (root + nested)
+  ':(exclude)*lock.json'
+  ':(exclude)**/*lock.json'
+  ':(exclude)yarn.lock'
+  ':(exclude)**/yarn.lock'
+  # ... other lockfiles ...
+  # Binary & media files (anywhere)
+  ':(exclude)**/*.svg'
+  ':(exclude)**/*.png'
+  ':(exclude)**/*.jpg'
+  ':(exclude)**/*.jpeg'
+  ':(exclude)**/*.gif'
+  ':(exclude)**/*.ico'
+  ':(exclude)**/*.webp'
+  ':(exclude)**/*.pdf'
+  # Fonts
+  ':(exclude)**/*.woff'
+  ':(exclude)**/*.woff2'
+  ':(exclude)**/*.ttf'
+  ':(exclude)**/*.eot'
+  # Build outputs & dependencies
+  ':(exclude)dist/**'
+  ':(exclude)build/**'
+  ':(exclude)out/**'
+  ':(exclude).next/**'
+  ':(exclude)node_modules/**'
+  ':(exclude)vendor/**'
+  ':(exclude)target/**'
+  ':(exclude)**/__pycache__/**'
+  ':(exclude)**/*.pyc'
+  ':(exclude)**/.venv/**'
+  # Logs & temp files
+  ':(exclude)**/*.log'
+  ':(exclude)**/*.tmp'
+  ':(exclude)**/*.cache'
+  ':(exclude).DS_Store'
+)
+
+# Detect git versions that don't support these advanced :(exclude) pathspecs
+# (older git versions may error with: "Unimplemented pathspec magic '_'")
+if [[ ${#EXCLUDES[@]} -gt 0 ]]; then
+  PATHSPEC_TEST_ERR="$REVIEW_DIR/.pathspec_test_err"
+  # Try a no-op diff using one exclude; if it fails with "Unimplemented pathspec magic",
+  # fall back to an unfiltered diff and warn the user.
+  if ! git --no-pager diff --no-index -- /dev/null /dev/null "${EXCLUDES[0]}" >/dev/null 2>"$PATHSPEC_TEST_ERR"; then
+    if grep -q 'Unimplemented pathspec magic' "$PATHSPEC_TEST_ERR" 2>/dev/null; then
+      echo "Warning: your git version does not support advanced ':(exclude)' pathspec filters." >&2
+      echo "Diff will be generated **without** lockfile/media/build/__pycache__/venv filters." >&2
+      EXCLUDES=()
+    fi
+  fi
+  rm -f "$PATHSPEC_TEST_ERR"
+fi
+
+# Load custom configuration if exists
+CONFIG_FILE="$REPO_ROOT/.reviewrc"
+ALLOW_SECRETS=false
+NO_FILTER=false
+
+if [[ -f "$CONFIG_FILE" ]]; then
+  echo "Loading configuration from .reviewrc" >&2
+  # Parse JSON config for additional excludes (simple grep-based parsing)
+  # Note: For complex JSON parsing, use jq if available
+  if command -v jq &> /dev/null; then
+    # Use :(exclude) to avoid pathspec magic issues (e.g. :! with __pycache__ can break exclusions)
+    ADDITIONAL_PATTERNS=$(jq -r '.ignorePatterns[]? // empty' "$CONFIG_FILE" 2>/dev/null | sed 's/^/:(exclude)**\//')
+    if [[ -n "$ADDITIONAL_PATTERNS" ]]; then
+      while IFS= read -r pattern; do
+        EXCLUDES+=("$pattern")
+      done <<< "$ADDITIONAL_PATTERNS"
+      echo "Loaded $(echo "$ADDITIONAL_PATTERNS" | wc -l | tr -d ' ') custom ignore patterns" >&2
+    fi
+  fi
+fi
+
+# Parse flags
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --allow-secrets)
+      ALLOW_SECRETS=true
+      shift
+      ;;
+    --no-filter)
+      NO_FILTER=true
+      EXCLUDES=()
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 # --staged: only staged changes
 if [[ "$1" == "--staged" ]]; then
   OUT="${2:-$DEFAULT_OUT}"
   echo "Writing staged diff to $OUT" >&2
-  git --no-pager diff --cached > "$OUT"
+  if [[ "$NO_FILTER" == true ]]; then
+    git --no-pager diff --cached > "$OUT"
+  else
+    git --no-pager diff --cached "${EXCLUDES[@]}" > "$OUT"
+  fi
   if [[ ! -s "$OUT" ]]; then
     echo "No staged changes." >&2
     exit 0
   fi
+  
+  # Secret detection
+  if [[ "$ALLOW_SECRETS" == false ]]; then
+    if command -v python3 &> /dev/null && [[ -f "$REPO_ROOT/scripts/filters/secret_detector.py" ]]; then
+      python3 "$REPO_ROOT/scripts/filters/secret_detector.py" "$OUT"
+      if [[ $? -ne 0 ]]; then
+        echo "⚠️  Secrets detected! Review blocked. Use --allow-secrets to override (not recommended)." >&2
+        exit 1
+      fi
+    fi
+  fi
+  
   echo "Done. $(wc -l < "$OUT") lines in $OUT" >&2
   exit 0
 fi
@@ -47,11 +162,27 @@ fi
 if [[ "$1" == "--local" ]]; then
   OUT="${2:-$DEFAULT_OUT}"
   echo "Writing all local changes (vs HEAD) to $OUT" >&2
-  git --no-pager diff HEAD > "$OUT"
+  if [[ "$NO_FILTER" == true ]]; then
+    git --no-pager diff HEAD > "$OUT"
+  else
+    git --no-pager diff HEAD "${EXCLUDES[@]}" > "$OUT"
+  fi
   if [[ ! -s "$OUT" ]]; then
     echo "No local changes (working tree clean)." >&2
     exit 0
   fi
+  
+  # Secret detection
+  if [[ "$ALLOW_SECRETS" == false ]]; then
+    if command -v python3 &> /dev/null && [[ -f "$REPO_ROOT/scripts/filters/secret_detector.py" ]]; then
+      python3 "$REPO_ROOT/scripts/filters/secret_detector.py" "$OUT"
+      if [[ $? -ne 0 ]]; then
+        echo "⚠️  Secrets detected! Review blocked. Use --allow-secrets to override (not recommended)." >&2
+        exit 1
+      fi
+    fi
+  fi
+  
   echo "Done. $(wc -l < "$OUT") lines in $OUT" >&2
   exit 0
 fi
@@ -59,7 +190,8 @@ fi
 # Branch vs branch (committed only)
 BASE="${1:?Usage: $0 <base-branch> <feature-branch> [output-file]
       Or: $0 --staged [output-file]
-      Or: $0 --local [output-file]}"
+      Or: $0 --local [output-file]
+      Options: --allow-secrets --no-filter}"
 FEATURE="${2:?Usage: $0 <base-branch> <feature-branch> [output-file]}"
 OUT="${3:-$DEFAULT_OUT}"
 
@@ -73,11 +205,26 @@ if ! git rev-parse --verify "$FEATURE" &>/dev/null; then
 fi
 
 echo "Writing diff $BASE..$FEATURE to $OUT" >&2
-git --no-pager diff "$BASE..$FEATURE" > "$OUT"
+if [[ "$NO_FILTER" == true ]]; then
+  git --no-pager diff "$BASE..$FEATURE" > "$OUT"
+else
+  git --no-pager diff "$BASE..$FEATURE" "${EXCLUDES[@]}" > "$OUT"
+fi
 
 if [[ ! -s "$OUT" ]]; then
   echo "No changes between $BASE and $FEATURE." >&2
   exit 0
+fi
+
+# Secret detection
+if [[ "$ALLOW_SECRETS" == false ]]; then
+  if command -v python3 &> /dev/null && [[ -f "$REPO_ROOT/scripts/filters/secret_detector.py" ]]; then
+    python3 "$REPO_ROOT/scripts/filters/secret_detector.py" "$OUT"
+    if [[ $? -ne 0 ]]; then
+      echo "⚠️  Secrets detected! Review blocked. Use --allow-secrets to override (not recommended)." >&2
+      exit 1
+    fi
+  fi
 fi
 
 echo "Done. $(wc -l < "$OUT") lines in $OUT" >&2

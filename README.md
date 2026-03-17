@@ -127,12 +127,155 @@ Then in chat: *"Review the diff in `.review/diff.txt` using the review-before-pr
 
 The review document is organized into **Critical**, **High priority**, **Medium / good-to-have**, and **Positive notes**, with suggested fixes as code blocks in the doc. For very large diffs (e.g. 5,000+ lines), the agent summarizes by file/module.
 
+**Example:** See [examples/sample-review.md](examples/sample-review.md) for a complete review output.
+
+---
+
+## ✨ New Features (v2.0)
+
+### Smart Filtering
+Automatically excludes noise files (lock files, SVGs, build artifacts) to keep reviews focused on actual code. Saves AI tokens and improves review quality.
+
+### Secret Detection
+Scans for hardcoded secrets (API keys, tokens, passwords) before generating diffs. Prevents accidental exposure to AI APIs.
+
+### Cross-Platform Support
+Works on Mac, Linux, and Windows. Python version available for full Windows compatibility.
+
+### Configuration
+Customize ignore patterns, secret detection, and review focus areas with `.reviewrc` file. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+### Context-Aware Reviews
+AI proactively searches your codebase for related code, reducing false positives and improving accuracy.
+
+### Metrics Tracking
+Track code quality trends over time with automatic metrics logging.
+
+---
+
+## Configuration
+
+Create a `.reviewrc` file in your project root to customize behavior:
+
+```json
+{
+  "baseBranch": "develop",
+  "ignorePatterns": ["*.generated.ts", "migrations/*"],
+  "review": {
+    "categories": ["security", "performance"],
+    "contextGathering": true
+  }
+}
+```
+
+**Full documentation:** [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+
+---
+
+## Advanced Features
+
+### Safe Fix Application (Coming Soon)
+
+After reviewing, apply suggested fixes safely via patch files:
+
+```bash
+# Generate patch for Critical fixes
+python scripts/apply_fixes.py --priority critical --preview
+
+# Review the patch, then apply
+python scripts/apply_fixes.py --priority critical --apply
+
+# Rollback if needed
+git apply -R .review/patches/critical-fixes.patch
+```
+
+### Metrics Tracking
+
+View your code quality trends:
+
+```bash
+python scripts/analyze_metrics.py
+```
+
+### Pre-commit Integration
+
+Automatically review staged changes before committing. See [docs/PRECOMMIT_SETUP.md](docs/PRECOMMIT_SETUP.md).
+
+---
+
+## Troubleshooting
+
+### Windows: "bash: command not found"
+
+**Solution 1:** Install Git Bash (comes with Git for Windows)
+```powershell
+winget install Git.Git
+```
+
+**Solution 2:** Use Python version (works on all platforms)
+```powershell
+python .cursor/skills/review-before-pr/scripts/generate_diff.py --staged
+```
+
+### "Secret detected" error
+
+If you need to review code containing test API keys:
+
+```bash
+# Temporarily disable secret detection
+./scripts/generate_diff.sh --allow-secrets main feature
+```
+
+### Large diff timeout
+
+For diffs >5000 lines, the AI will summarize. To review specific parts:
+
+```bash
+# Split into smaller reviews by directory
+./scripts/generate_diff.sh main feature .review/frontend.txt -- src/frontend/
+./scripts/generate_diff.sh main feature .review/backend.txt -- src/backend/
+```
+
+**Full troubleshooting guide:** [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+
+---
+
+## Comparison with Other Tools
+
+| Feature | review-before-pr | CodeRabbit | Qodo | GitHub Copilot | SonarQube |
+|---------|------------------|------------|------|----------------|-----------|
+| **Pre-PR reviews** | ✅ Core focus | ⚠️ Supports | ⚠️ Supports | ❌ PR-only | ⚠️ CI-only |
+| **Local execution** | ✅ Yes | ⚠️ CLI only | ❌ No | ❌ No | ✅ Yes |
+| **No API keys needed** | ✅ Yes | ❌ Requires account | ❌ Requires account | ❌ Requires license | ✅ Yes |
+| **Works offline** | ✅ Yes | ❌ No | ❌ No | ❌ No | ✅ Yes |
+| **AI-powered** | ✅ Yes (your agent) | ✅ Yes | ✅ Yes | ✅ Yes | ⚠️ Rules-based |
+| **Context-aware** | ✅ Yes (v2.0) | ✅ Yes | ✅ Yes | ✅ Yes | ⚠️ Limited |
+| **Secret detection** | ✅ Yes (v2.0) | ✅ Yes | ⚠️ Limited | ❌ No | ✅ Yes |
+| **Metrics tracking** | ✅ Yes (v2.0) | ✅ Yes | ✅ Yes | ❌ No | ✅ Yes |
+| **Cost** | **Free** | $12-48/user/mo | $19-39/user/mo | $10-39/user/mo | Free (OSS) |
+
 ---
 
 ## Requirements
 
 - A **git repository**
 - An **AI agent that supports skills** (Cursor, Claude Code, Windsurf, Continue, etc.)
+- **Python 3.7+** (for cross-platform support and secret detection)
+
+---
+
+## Documentation
+
+- [Configuration Guide](docs/CONFIGURATION.md) - Customize for your project
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [Pre-commit Setup](docs/PRECOMMIT_SETUP.md) - Automatic reviews before commits
+- [Sample Review Output](examples/sample-review.md) - See what you'll get
+
+---
+
+## Contributing
+
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
