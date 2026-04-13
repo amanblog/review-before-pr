@@ -1,6 +1,6 @@
 ---
 name: review-before-pr
-description: Review code before opening a PR—generate a full diff and produce a structured markdown report (bugs, security, performance, suggested code in-doc only). Use when the user wants to review changes before opening a PR, "review my branch", "review my staged changes", or get a code review without GitHub.
+description: Review code before opening a PR—generate a full diff and produce a structured markdown report (bugs, security, performance, suggested code in-doc only), with optional posting of findings as pending PR review comments on GitHub. Use when the user wants to review changes before opening a PR, "review my branch", "review my staged changes", or get a code review.
 ---
 
 # Review Before PR
@@ -63,6 +63,7 @@ fi
 ```
 
 The configuration file allows users to:
+
 - Customize ignore patterns
 - Enable/disable secret detection
 - Set review categories
@@ -80,7 +81,7 @@ Then review the diff using the applicable sections (frontend, backend, or genera
 - **Security** — No secrets in code; input validated/sanitized; auth/authz respected; no XSS/injection vectors.
 - **Complexity** — Code as simple as needed; no over-engineering for hypothetical future needs.
 - **Tests** — Adequate tests for the change; tests are correct and maintainable.
-- **Naming & comments** — Clear names; comments explain *why* where needed, not *what*.
+- **Naming & comments** — Clear names; comments explain _why_ where needed, not _what_.
 - **Style & consistency** — Matches existing patterns and style guide; no unrelated style churn in the same change.
 - **Documentation** — If behavior or APIs change, docs updated.
 - **Context** — Consider the full file and system; flag if the change degrades overall code health.
@@ -94,6 +95,7 @@ For **frontend** repos, also consider: semantic HTML, CSS practices, JS/React pa
 After reading the diff but before finalizing your analysis, proactively gather context:
 
 1. **Identify modified exports**: Search for changed function/type signatures
+
    ```
    Example: If diff shows "export function getUser(id: string, includeDeleted: boolean)"
    Action: Search codebase for "getUser(" to find all call sites
@@ -101,12 +103,14 @@ After reading the diff but before finalizing your analysis, proactively gather c
    ```
 
 2. **Find call sites**: Use grep/search to find where modified functions are used
+
    ```bash
    # Search for function usage
    grep -r "functionName(" --include="*.ts" --include="*.tsx"
    ```
 
 3. **Check related files**: Read middleware, schemas, tests related to changes
+
    ```
    Example: If auth.ts changes, read:
    - src/middleware/auth.ts (likely uses these functions)
@@ -135,7 +139,32 @@ Create **one markdown file**. By default write it under **`.review/`** so it is 
 - Do **not** edit the user's source files unless they explicitly ask you to apply a fix.
 - Each finding: **File**, **Issue**, and **Suggested change** (code snippet in the doc).
 
-### Step 3.5: Generate Patch File (NEW - Optional)
+### Step 3.5: Verification Pass (Multi-pass Review)
+
+After producing the initial review document, do a **focused second pass** to catch findings that the first pass may have missed. This is not a full re-review — it is a targeted gap check that uses significantly fewer tokens.
+
+**How to run the verification pass:**
+
+1. Re-read the **Summary** section of your review document (not the full diff again).
+2. Re-scan the diff with these specific lenses, checking **only** for things not already covered:
+   - **Cross-file issues**: Are there patterns or inconsistencies _across_ files that individual-file review missed? (e.g., an API contract changed in one file but callers in another file weren't updated)
+   - **Security blind spots**: Any input validation, auth checks, or injection vectors missed?
+   - **Error paths**: Are there unhappy paths (network failures, null/empty inputs, timeouts) not handled?
+   - **Concurrency & state**: Race conditions, shared mutable state, missing locks?
+   - **Missing tests**: Are there new code paths with no corresponding test coverage?
+3. If the second pass finds new issues, **append them to the existing review document** under their appropriate priority section (do not rewrite findings from pass 1). Add a note like:
+
+   ```markdown
+   > _Found in verification pass_
+   ```
+
+4. Update the **Summary** section with revised counts if new findings were added.
+
+**Token efficiency:** The second pass only re-reads the diff once with the targeted lenses above — it does **not** redo the full analysis. If the diff is large (5,000+ lines), the second pass should focus only on Critical and High priority categories.
+
+**When to skip:** If the diff is small (<100 lines) and straightforward (e.g., a config change or documentation update), you may skip the verification pass.
+
+### Step 3.6: Generate Patch File (Optional)
 
 If the user says "apply fix #2" or "generate patch for security fixes":
 
@@ -150,6 +179,7 @@ If the user says "apply fix #2" or "generate patch for security fixes":
 6. Provide rollback command: `git apply -R .review/patches/fixes-<timestamp>.patch`
 
 **Safety rules:**
+
 - NEVER auto-apply without user confirmation
 - One fix at a time (or one category like "all Critical")
 - Always generate patch first, apply second
@@ -160,16 +190,92 @@ If the user says "apply fix #2" or "generate patch for security fixes":
 After generating the review, append to `.review/metrics.jsonl`:
 
 ```json
-{"timestamp": "2026-03-16T10:30:00Z", "branch": "feature-auth", "mode": "branch", "base": "main", "diff_lines": 342, "files_changed": 12, "findings": {"critical": 2, "high": 5, "medium": 8, "positive": 3}, "secrets_detected": 0, "duration_seconds": 45}
+{
+  "timestamp": "2026-03-16T10:30:00Z",
+  "branch": "feature-auth",
+  "mode": "branch",
+  "base": "main",
+  "diff_lines": 342,
+  "files_changed": 12,
+  "findings": { "critical": 2, "high": 5, "medium": 8, "positive": 3 },
+  "secrets_detected": 0,
+  "duration_seconds": 45
+}
 ```
 
 This allows users to track review patterns over time and measure code quality improvements.
+
+### Step 5: Post Comments to PR
+
+**IMPORTANT: Always run this step after producing the review document.** Do not skip this step unless the review mode is `--staged` or `--local` (no PR exists for local-only changes).
+
+After the review document is generated, check if the current branch has an open PR. If a PR is detected, you **must** ask the user whether they want to post the findings as pending review comments on the PR.
+
+**How this works:**
+
+1. **Detect PR:** Run `gh pr view --json number,url` to check for an open PR on the current branch. If `gh` is not installed or no PR exists, inform the user ("No open PR found for this branch — skipping PR comment posting. You can still use the review doc at `.review/review-<branch>.md`.") and stop here.
+
+2. **Confirm with user:** Ask the user:
+
+   ```
+   PR #<number> detected. Would you like to post review comments to this PR?
+   Options: all / select / skip
+   ```
+
+   - **all** — post all findings as pending comments
+   - **select** — show numbered list, let user pick which findings to post (by number, priority level, or comma-separated list)
+   - **skip** — don't post, just keep the review document
+
+3. **Run the commenting script:**
+
+   ```bash
+   # Post all findings
+   python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md --all
+
+   # Interactive selection (default)
+   python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md
+
+   # Only critical + high priority
+   python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md --priority high
+
+   # Specific PR number (if auto-detect fails)
+   python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md --pr 42
+
+   # Preview without posting
+   python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md --dry-run
+   ```
+
+4. **Result:** The script creates a **PENDING** review on the PR. Comments are **not submitted** — they sit in the user's pending review state on GitHub, just like manually added review comments. The user can:
+   - Edit comment text
+   - Remove comments they don't want
+   - Submit the review when ready
+
+5. **Provide URL:** After posting, show the user the direct link to review and submit:
+   ```
+   ✅ Pending review created with N comment(s)!
+   👉 Review and submit here: https://github.com/<owner>/<repo>/pull/<number>/files
+   ```
+
+**Signature:** Each comment includes a small footer identifying it as AI-assisted:
+
+```
+---
+🔍 *Posted by review-before-pr — AI-assisted review*
+```
+
+**Requirements:**
+
+- `gh` CLI must be installed and authenticated (`gh auth status`)
+- Current repo must have a GitHub remote
+- A PR must exist for the current branch (or `--pr` flag used)
+
+**When to skip:** Only skip this step if (a) the review mode is `--staged` or `--local` (no PR context), or (b) `gh` CLI is not installed/authenticated. For all branch-vs-branch reviews, always check for a PR and ask the user.
 
 ## Output template
 
 Use this structure in the generated review doc (follow the priority syntax from the checklist):
 
-```markdown
+````markdown
 # Code review: <feature-branch> vs <base-branch>
 
 **Generated:** YYYY-MM-DD HH:MM:SS  
@@ -187,19 +293,23 @@ Use this structure in the generated review doc (follow the priority syntax from 
 **Issue:** Clear explanation of the problem and its impact.
 
 **Suggested fix:**
+
 ```lang
 // Exact code to replace or add
 // Must be copy-paste ready
 ```
+````
 
 **Why this matters:** Brief context on business/technical impact.
 
 ---
 
 ## High priority
+
 …
 
 ## Medium / good-to-have
+
 …
 
 ## Positive notes
@@ -218,6 +328,7 @@ Use this structure in the generated review doc (follow the priority syntax from 
 **Recommendation:** Fix the Critical issues before merging. High priority items should also be addressed.
 
 **Overall:** This change [improves/maintains/degrades] code health by [explanation].
+
 ```
 
 ## Quick start
@@ -225,5 +336,7 @@ Use this structure in the generated review doc (follow the priority syntax from 
 1. **User asks to review branch vs base:** Run `<skill-dir>/scripts/generate_diff.sh <base-branch> <feature-branch>` from project root (use current branch as feature-branch), then analyze `.review/diff.txt` and write the report. If user said "against main", use `main` as base.
 2. **Staged/local:** Run the script with `--staged` or `--local` instead of branch names when the user asks for that.
 3. **User already ran the script:** If `.review/diff.txt` exists and user asks to review it, skip running the script; read the diff and produce the review doc under `.review/`.
+4. **After writing the review (branch-vs-branch mode only):** Run `gh pr view --json number,url` to check for an open PR. If found, ask the user: *"PR #N detected. Would you like to post review comments to this PR? (all / select / skip)"*. Then run `python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md` with the appropriate flags. **Do not skip this step** — always check for a PR and ask.
 
 Output: write the review to `.review/review-<branch-or-name>.md` (git-ignored). See **Workflow** above for full details.
+```

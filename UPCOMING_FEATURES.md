@@ -1,7 +1,7 @@
 # Upcoming Features & Roadmap
 
-**Status:** v2.0 Released - Production Ready  
-**Completion:** 80% (All P0 items + Core P1 items complete)
+**Status:** v2.1 Released - Production Ready  
+**Completion:** 85% (All P0 items + Core P1 items + PR Comments + Multi-Pass complete)
 
 ---
 
@@ -24,6 +24,12 @@
 - Sample review output
 - Configuration guide
 - Troubleshooting guide
+
+**Phase 2.1 - PR Integration & Review Quality:** 100% ✅
+- PR comment posting via `gh` CLI (pending review workflow)
+- Interactive comment selection (all / by priority / custom pick)
+- Multi-pass verification to catch missed findings
+- Configurable signature, modes, and thresholds
 
 **The tool is production-ready and fully usable now!**
 
