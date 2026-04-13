@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import List, Optional
 
 
-SIGNATURE = "\n\n---\n🔍 *Posted by [review-before-pr](https://github.com/amanblog/review-before-pr) — AI-assisted review · verify before submitting*"
+SIGNATURE = "\n\n---\n🔍 *Posted by [review-before-pr](https://github.com/amanblog/review-before-pr) — AI-assisted review*"
 
 
 @dataclass

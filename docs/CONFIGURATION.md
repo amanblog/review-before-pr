@@ -5,6 +5,7 @@ The review-before-pr skill can be customized using a `.reviewrc` configuration f
 ## Quick Start
 
 1. Copy the example configuration:
+
    ```bash
    cp .cursor/skills/review-before-pr/.reviewrc.example .reviewrc
    ```
@@ -53,11 +54,13 @@ The `.reviewrc` file uses JSON format:
 ### Basic Settings
 
 #### `version` (string)
+
 - **Default:** `"1.0"`
 - **Description:** Configuration file version for future compatibility
 - **Example:** `"1.0"`
 
 #### `baseBranch` (string)
+
 - **Default:** `"main"`
 - **Description:** Default base branch for comparisons
 - **Example:** `"develop"`, `"master"`, `"main"`
@@ -67,6 +70,7 @@ The `.reviewrc` file uses JSON format:
 ### Filtering Options
 
 #### `ignorePatterns` (array of strings)
+
 - **Default:** `[]`
 - **Description:** Additional file patterns to exclude from diffs (uses glob syntax)
 - **Example:**
@@ -82,6 +86,7 @@ The `.reviewrc` file uses JSON format:
   ```
 
 **Built-in patterns (always excluded unless `--no-filter` is used):**
+
 - Lock files: `package-lock.json`, `yarn.lock`, `Cargo.lock`, etc.
 - Binary files: `*.svg`, `*.png`, `*.jpg`, `*.pdf`, etc.
 - Minified files: `*.min.js`, `*.min.css`, `*.bundle.js`
@@ -89,6 +94,7 @@ The `.reviewrc` file uses JSON format:
 - Temp files: `*.log`, `*.tmp`, `.DS_Store`
 
 #### `additionalExcludes` (array of strings)
+
 - **Default:** `[]`
 - **Description:** Additional git pathspec exclusions (advanced)
 - **Example:**
@@ -106,11 +112,13 @@ The `.reviewrc` file uses JSON format:
 #### `secretPatterns` (object)
 
 **`secretPatterns.enabled`** (boolean)
+
 - **Default:** `true`
 - **Description:** Enable/disable secret detection
 - **Example:** `true`
 
 **`secretPatterns.customPatterns`** (array of objects)
+
 - **Default:** `[]`
 - **Description:** Add custom secret detection patterns
 - **Example:**
@@ -137,6 +145,7 @@ The `.reviewrc` file uses JSON format:
 #### `review` (object)
 
 **`review.categories`** (array of strings)
+
 - **Default:** `["security", "performance", "maintainability"]`
 - **Description:** Focus areas for code review
 - **Options:** `"security"`, `"performance"`, `"maintainability"`, `"accessibility"`, `"testing"`
@@ -148,11 +157,13 @@ The `.reviewrc` file uses JSON format:
   ```
 
 **`review.commentPriorities`** (boolean)
+
 - **Default:** `true`
 - **Description:** Use explicit priority syntax ([Critical], [High], [Medium], [Nit])
 - **Example:** `true`
 
 **`review.contextGathering`** (boolean)
+
 - **Default:** `true`
 - **Description:** Enable AI to search codebase for related code during review
 - **Example:** `true`
@@ -164,17 +175,20 @@ The `.reviewrc` file uses JSON format:
 #### `output` (object)
 
 **`output.format`** (string)
+
 - **Default:** `"markdown"`
 - **Description:** Output format for review reports
 - **Options:** `"markdown"` (only option currently)
 - **Example:** `"markdown"`
 
 **`output.includeMetrics`** (boolean)
+
 - **Default:** `true`
 - **Description:** Track review metrics in `.review/metrics.jsonl`
 - **Example:** `true`
 
 **`output.timestampReports`** (boolean)
+
 - **Default:** `true`
 - **Description:** Include timestamp in review report filenames
 - **Example:** `true`
@@ -186,11 +200,13 @@ The `.reviewrc` file uses JSON format:
 #### `patches` (object)
 
 **`patches.autoGenerate`** (boolean)
+
 - **Default:** `false`
 - **Description:** Automatically generate patch files for suggested fixes
 - **Example:** `false` (recommended for safety)
 
 **`patches.requireConfirmation`** (boolean)
+
 - **Default:** `true`
 - **Description:** Require user confirmation before applying patches
 - **Example:** `true`
@@ -202,16 +218,19 @@ The `.reviewrc` file uses JSON format:
 #### `prComments` (object)
 
 **`prComments.enabled`** (boolean)
+
 - **Default:** `true`
 - **Description:** Enable the option to post review findings as pending PR comments
 - **Example:** `true`
 
 **`prComments.signature`** (string)
-- **Default:** `"🔍 *Posted by review-before-pr — AI-assisted review · verify before submitting*"`
+
+- **Default:** `"🔍 *Posted by review-before-pr — AI-assisted review*"`
 - **Description:** Custom signature appended to each PR comment. Set to empty string to disable.
 - **Example:** `"🤖 Reviewed by my-team-bot"`
 
 **`prComments.defaultMode`** (string)
+
 - **Default:** `"select"`
 - **Description:** Default selection mode when posting comments
 - **Options:** `"all"` (post everything), `"select"` (interactive picker), `"skip"` (never offer)
@@ -224,11 +243,13 @@ The `.reviewrc` file uses JSON format:
 #### `multiPass` (object)
 
 **`multiPass.enabled`** (boolean)
+
 - **Default:** `true`
 - **Description:** Enable the verification pass that checks for missed findings after the initial review
 - **Example:** `true`
 
 **`multiPass.skipBelowLines`** (integer)
+
 - **Default:** `100`
 - **Description:** Skip the verification pass for diffs smaller than this many lines (small diffs rarely benefit from a second pass)
 - **Example:** `100`
@@ -252,11 +273,7 @@ The `.reviewrc` file uses JSON format:
 {
   "version": "1.0",
   "baseBranch": "main",
-  "ignorePatterns": [
-    "*.generated.ts",
-    "*.stories.tsx",
-    "public/static/**"
-  ],
+  "ignorePatterns": ["*.generated.ts", "*.stories.tsx", "public/static/**"],
   "review": {
     "categories": ["security", "accessibility", "performance"],
     "commentPriorities": true,
@@ -271,11 +288,7 @@ The `.reviewrc` file uses JSON format:
 {
   "version": "1.0",
   "baseBranch": "develop",
-  "ignorePatterns": [
-    "migrations/*",
-    "*.pyc",
-    "__pycache__/**"
-  ],
+  "ignorePatterns": ["migrations/*", "*.pyc", "__pycache__/**"],
   "secretPatterns": {
     "enabled": true,
     "customPatterns": [
@@ -324,6 +337,7 @@ The `.reviewrc` file uses JSON format:
 Different teams can use different configurations by placing `.reviewrc` in their respective directories. The script will use the configuration from the nearest parent directory.
 
 Example structure:
+
 ```
 project-root/
 ├── .reviewrc                    # Root config (default)
@@ -365,6 +379,7 @@ Some settings can be overridden with environment variables:
 - `REVIEW_NO_FILTER` - Set to `"true"` to disable file filtering
 
 Example:
+
 ```bash
 REVIEW_BASE_BRANCH=develop ./scripts/generate_diff.sh --staged
 ```
@@ -376,6 +391,7 @@ REVIEW_BASE_BRANCH=develop ./scripts/generate_diff.sh --staged
 For team-specific review rules, create a `TEAM_REVIEW_RULES.md` file in your project root. The AI will automatically load and apply these rules during review.
 
 Example `TEAM_REVIEW_RULES.md`:
+
 ```markdown
 # Team-Specific Review Rules
 
