@@ -190,13 +190,15 @@ After generating the review, append to `.review/metrics.jsonl`:
 
 This allows users to track review patterns over time and measure code quality improvements.
 
-### Step 5: Post Comments to PR (Optional)
+### Step 5: Post Comments to PR
 
-After the review document is generated, check if the current branch has an open PR. If it does (or the user provided a PR number), offer to post review findings as **pending review comments** directly on the PR.
+**IMPORTANT: Always run this step after producing the review document.** Do not skip this step unless the review mode is `--staged` or `--local` (no PR exists for local-only changes).
+
+After the review document is generated, check if the current branch has an open PR. If a PR is detected, you **must** ask the user whether they want to post the findings as pending review comments on the PR.
 
 **How this works:**
 
-1. **Detect PR:** Run `gh pr view --json number,url` to check for an open PR on the current branch. If none found, skip this step silently (this step is only for PR-based reviews, not local/staged changes).
+1. **Detect PR:** Run `gh pr view --json number,url` to check for an open PR on the current branch. If `gh` is not installed or no PR exists, inform the user ("No open PR found for this branch — skipping PR comment posting. You can still use the review doc at `.review/review-<branch>.md`.") and stop here.
 
 2. **Confirm with user:** Ask the user:
    ```
@@ -247,7 +249,7 @@ After the review document is generated, check if the current branch has an open 
 - Current repo must have a GitHub remote
 - A PR must exist for the current branch (or `--pr` flag used)
 
-**When to skip:** If the user only asked for staged/local changes review, or if `gh` is not available, skip this step entirely. Only offer PR commenting when reviewing branch-vs-branch changes with an open PR.
+**When to skip:** Only skip this step if (a) the review mode is `--staged` or `--local` (no PR context), or (b) `gh` CLI is not installed/authenticated. For all branch-vs-branch reviews, always check for a PR and ask the user.
 
 ## Output template
 
@@ -309,5 +311,6 @@ Use this structure in the generated review doc (follow the priority syntax from 
 1. **User asks to review branch vs base:** Run `<skill-dir>/scripts/generate_diff.sh <base-branch> <feature-branch>` from project root (use current branch as feature-branch), then analyze `.review/diff.txt` and write the report. If user said "against main", use `main` as base.
 2. **Staged/local:** Run the script with `--staged` or `--local` instead of branch names when the user asks for that.
 3. **User already ran the script:** If `.review/diff.txt` exists and user asks to review it, skip running the script; read the diff and produce the review doc under `.review/`.
+4. **After writing the review (branch-vs-branch mode only):** Run `gh pr view --json number,url` to check for an open PR. If found, ask the user: *"PR #N detected. Would you like to post review comments to this PR? (all / select / skip)"*. Then run `python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md` with the appropriate flags. **Do not skip this step** — always check for a PR and ask.
 
 Output: write the review to `.review/review-<branch-or-name>.md` (git-ignored). See **Workflow** above for full details.
