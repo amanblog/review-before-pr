@@ -30,5 +30,14 @@
   "patches": {
     "autoGenerate": false,
     "requireConfirmation": true
+  },
+  "prComments": {
+    "enabled": true,
+    "signature": "🔍 *Posted by [review-before-pr](https://github.com/amanblog/review-before-pr) — AI-assisted review · verify before submitting*",
+    "defaultMode": "select"
+  },
+  "multiPass": {
+    "enabled": true,
+    "skipBelowLines": 100
   }
 }

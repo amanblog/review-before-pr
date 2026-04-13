@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [2.1.0] - 2026-04-13
+
+### Added
+
+- **PR Comment Posting** - Post review findings as pending GitHub PR review comments
+  - Creates PENDING review (not submitted) — edit/remove comments before submitting
+  - Interactive selection: post all, by priority, or pick specific findings
+  - Signature on each comment for visual identification of AI-assisted reviews
+  - Direct URL to review and submit pending comments on GitHub
+  - Supports `--dry-run` to preview without posting
+  - Requires `gh` CLI (auto-detected)
+  - New script: `scripts/post_comments.py`
+
+- **Multi-Pass Verification** - Second focused pass to catch findings the initial review missed
+  - Targeted gap check (cross-file issues, security blind spots, error paths, concurrency, missing tests)
+  - Appends new findings to existing review doc without rewriting
+  - Skipped for small diffs (<100 lines) to save tokens
+  - Configurable via `.reviewrc` `multiPass` settings
+
+### Changed
+
+- Updated `.reviewrc.example` with new `prComments` and `multiPass` configuration sections
+- Updated CONFIGURATION.md with documentation for new options
+- Renumbered SKILL.md steps: patch generation is now Step 3.6 (was 3.5)
+
+---
+
 ## [2.0.0] - 2026-03-16
 
 ### 🎉 Major Release - Elite Tier Implementation

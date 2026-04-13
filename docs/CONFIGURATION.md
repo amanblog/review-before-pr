@@ -197,6 +197,44 @@ The `.reviewrc` file uses JSON format:
 
 ---
 
+### PR Comments Options
+
+#### `prComments` (object)
+
+**`prComments.enabled`** (boolean)
+- **Default:** `true`
+- **Description:** Enable the option to post review findings as pending PR comments
+- **Example:** `true`
+
+**`prComments.signature`** (string)
+- **Default:** `"🔍 *Posted by review-before-pr — AI-assisted review · verify before submitting*"`
+- **Description:** Custom signature appended to each PR comment. Set to empty string to disable.
+- **Example:** `"🤖 Reviewed by my-team-bot"`
+
+**`prComments.defaultMode`** (string)
+- **Default:** `"select"`
+- **Description:** Default selection mode when posting comments
+- **Options:** `"all"` (post everything), `"select"` (interactive picker), `"skip"` (never offer)
+- **Example:** `"select"`
+
+---
+
+### Multi-Pass Review Options
+
+#### `multiPass` (object)
+
+**`multiPass.enabled`** (boolean)
+- **Default:** `true`
+- **Description:** Enable the verification pass that checks for missed findings after the initial review
+- **Example:** `true`
+
+**`multiPass.skipBelowLines`** (integer)
+- **Default:** `100`
+- **Description:** Skip the verification pass for diffs smaller than this many lines (small diffs rarely benefit from a second pass)
+- **Example:** `100`
+
+---
+
 ## Example Configurations
 
 ### Minimal Configuration

@@ -1,6 +1,6 @@
 ---
 name: review-before-pr
-description: Review code before opening a PR—generate a full diff and produce a structured markdown report (bugs, security, performance, suggested code in-doc only). Use when the user wants to review changes before opening a PR, "review my branch", "review my staged changes", or get a code review without GitHub.
+description: Review code before opening a PR—generate a full diff and produce a structured markdown report (bugs, security, performance, suggested code in-doc only), with optional posting of findings as pending PR review comments on GitHub. Use when the user wants to review changes before opening a PR, "review my branch", "review my staged changes", or get a code review.
 ---
 
 # Review Before PR
@@ -135,7 +135,32 @@ Create **one markdown file**. By default write it under **`.review/`** so it is 
 - Do **not** edit the user's source files unless they explicitly ask you to apply a fix.
 - Each finding: **File**, **Issue**, and **Suggested change** (code snippet in the doc).
 
-### Step 3.5: Generate Patch File (NEW - Optional)
+### Step 3.5: Verification Pass (Multi-pass Review)
+
+After producing the initial review document, do a **focused second pass** to catch findings that the first pass may have missed. This is not a full re-review — it is a targeted gap check that uses significantly fewer tokens.
+
+**How to run the verification pass:**
+
+1. Re-read the **Summary** section of your review document (not the full diff again).
+2. Re-scan the diff with these specific lenses, checking **only** for things not already covered:
+   - **Cross-file issues**: Are there patterns or inconsistencies *across* files that individual-file review missed? (e.g., an API contract changed in one file but callers in another file weren't updated)
+   - **Security blind spots**: Any input validation, auth checks, or injection vectors missed?
+   - **Error paths**: Are there unhappy paths (network failures, null/empty inputs, timeouts) not handled?
+   - **Concurrency & state**: Race conditions, shared mutable state, missing locks?
+   - **Missing tests**: Are there new code paths with no corresponding test coverage?
+3. If the second pass finds new issues, **append them to the existing review document** under their appropriate priority section (do not rewrite findings from pass 1). Add a note like:
+
+   ```markdown
+   > *Found in verification pass*
+   ```
+
+4. Update the **Summary** section with revised counts if new findings were added.
+
+**Token efficiency:** The second pass only re-reads the diff once with the targeted lenses above — it does **not** redo the full analysis. If the diff is large (5,000+ lines), the second pass should focus only on Critical and High priority categories.
+
+**When to skip:** If the diff is small (<100 lines) and straightforward (e.g., a config change or documentation update), you may skip the verification pass.
+
+### Step 3.6: Generate Patch File (Optional)
 
 If the user says "apply fix #2" or "generate patch for security fixes":
 
@@ -164,6 +189,65 @@ After generating the review, append to `.review/metrics.jsonl`:
 ```
 
 This allows users to track review patterns over time and measure code quality improvements.
+
+### Step 5: Post Comments to PR (Optional)
+
+After the review document is generated, check if the current branch has an open PR. If it does (or the user provided a PR number), offer to post review findings as **pending review comments** directly on the PR.
+
+**How this works:**
+
+1. **Detect PR:** Run `gh pr view --json number,url` to check for an open PR on the current branch. If none found, skip this step silently (this step is only for PR-based reviews, not local/staged changes).
+
+2. **Confirm with user:** Ask the user:
+   ```
+   PR #<number> detected. Would you like to post review comments to this PR?
+   Options: all / select / skip
+   ```
+   - **all** — post all findings as pending comments
+   - **select** — show numbered list, let user pick which findings to post (by number, priority level, or comma-separated list)
+   - **skip** — don't post, just keep the review document
+
+3. **Run the commenting script:**
+   ```bash
+   # Post all findings
+   python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md --all
+
+   # Interactive selection (default)
+   python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md
+
+   # Only critical + high priority
+   python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md --priority high
+
+   # Specific PR number (if auto-detect fails)
+   python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md --pr 42
+
+   # Preview without posting
+   python3 "<skill-dir>/scripts/post_comments.py" .review/review-<branch>.md --dry-run
+   ```
+
+4. **Result:** The script creates a **PENDING** review on the PR. Comments are **not submitted** — they sit in the user's pending review state on GitHub, just like manually added review comments. The user can:
+   - Edit comment text
+   - Remove comments they don't want
+   - Submit the review when ready
+
+5. **Provide URL:** After posting, show the user the direct link to review and submit:
+   ```
+   ✅ Pending review created with N comment(s)!
+   👉 Review and submit here: https://github.com/<owner>/<repo>/pull/<number>/files
+   ```
+
+**Signature:** Each comment includes a small footer identifying it as AI-assisted:
+```
+---
+🔍 *Posted by review-before-pr — AI-assisted review · verify before submitting*
+```
+
+**Requirements:**
+- `gh` CLI must be installed and authenticated (`gh auth status`)
+- Current repo must have a GitHub remote
+- A PR must exist for the current branch (or `--pr` flag used)
+
+**When to skip:** If the user only asked for staged/local changes review, or if `gh` is not available, skip this step entirely. Only offer PR commenting when reviewing branch-vs-branch changes with an open PR.
 
 ## Output template
 
