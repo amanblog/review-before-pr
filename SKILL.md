@@ -141,11 +141,13 @@ Create **one markdown file**. By default write it under **`.review/`** so it is 
 
 ### Step 3.5: Verification Pass (Multi-pass Review)
 
-After producing the initial review document, do a **focused second pass** to catch findings that the first pass may have missed. This is not a full re-review — it is a targeted gap check that uses significantly fewer tokens.
+**IMPORTANT: The first pass (Step 3) must be thorough and complete on its own.** Do not hold back findings or reduce depth because a second pass exists. The verification pass is a _safety net_, not a substitute for a comprehensive first pass. Report every issue you find in Step 3 — err on the side of more findings, not fewer.
+
+After producing the initial review document, do a **focused second pass** to catch findings that the first pass may have missed. This is not a full re-review — it is a targeted gap check using specific lenses that complement the first pass.
 
 **How to run the verification pass:**
 
-1. Re-read the **Summary** section of your review document (not the full diff again).
+1. Re-read **all findings** in your review document to know what is already covered.
 2. Re-scan the diff with these specific lenses, checking **only** for things not already covered:
    - **Cross-file issues**: Are there patterns or inconsistencies _across_ files that individual-file review missed? (e.g., an API contract changed in one file but callers in another file weren't updated)
    - **Security blind spots**: Any input validation, auth checks, or injection vectors missed?
