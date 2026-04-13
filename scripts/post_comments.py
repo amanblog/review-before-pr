@@ -354,6 +354,11 @@ def main():
         help="Only post findings of this priority or higher"
     )
     parser.add_argument(
+        "--findings",
+        default=None,
+        help="Comma-separated finding numbers to post (e.g. '1,3,5'). Bypasses interactive selection."
+    )
+    parser.add_argument(
         "--signature",
         default=None,
         help="Custom signature appended to each comment (overrides default)"
@@ -419,6 +424,12 @@ def main():
     # Select findings
     if args.post_all:
         selected = findings
+    elif args.findings:
+        nums = {int(n.strip()) for n in args.findings.split(",")}
+        selected = [f for f in findings if f.number in nums]
+        if not selected:
+            print(f"No findings matched numbers: {args.findings}", file=sys.stderr)
+            sys.exit(1)
     else:
         selected = select_findings(findings)
 
