@@ -246,7 +246,12 @@ def select_findings(findings: List[Finding]) -> List[Finding]:
 
 
 def create_pending_review(pr: PRInfo, findings: List[Finding], signature: str) -> bool:
-    """Create a PENDING review on the PR with comments via gh api."""
+    """Create a PENDING review on the PR with inline comments via gh api.
+
+    Omitting the 'event' field in the GitHub API payload creates a pending
+    (draft) review. The user can then edit or remove comments on GitHub before
+    submitting. Using event='PENDING' is invalid and causes an API error.
+    """
     comments = []
     skipped = []
 
@@ -255,41 +260,36 @@ def create_pending_review(pr: PRInfo, findings: List[Finding], signature: str) -
             skipped.append(f)
             continue
 
+        if f.line is None:
+            print(f"⚠️  Skipping finding #{f.number} — no line number (cannot place inline comment).", file=sys.stderr)
+            skipped.append(f)
+            continue
+
         comment: dict = {
             "path": f.file_path,
+            "line": f.line,
+            "side": "RIGHT",  # comment on the new (right) side of the diff
             "body": format_comment_body(f, signature),
         }
-
-        # Add line number if available
-        if f.line is not None:
-            comment["line"] = f.line
-            comment["side"] = "RIGHT"  # comment on the new version of the file
-
         comments.append(comment)
 
     if not comments:
-        print("No comments to post (all findings missing file paths).", file=sys.stderr)
+        print("No comments to post (all findings are missing file paths or line numbers).", file=sys.stderr)
         return False
 
     if skipped:
-        print(f"⚠️  Skipped {len(skipped)} finding(s) without file paths.", file=sys.stderr)
+        print(f"⚠️  Skipped {len(skipped)} finding(s) (missing file path or line number).", file=sys.stderr)
 
-    # Build the review payload
+    # Build the review payload.
+    # Omitting 'event' creates a PENDING draft review — the user must submit it
+    # manually on GitHub. Setting event='COMMENT' would submit it immediately.
     payload = {
-        "event": "PENDING",
+        "commit_id": pr.head_sha,
         "comments": comments,
     }
 
-    # Use gh api to create the review
     api_path = f"/repos/{pr.owner}/{pr.repo}/pulls/{pr.number}/reviews"
 
-    result = run_gh([
-        "api", api_path,
-        "--method", "POST",
-        "--input", "-",
-    ], check=False)
-
-    # Feed the payload via stdin
     result = subprocess.run(
         ["gh", "api", api_path, "--method", "POST", "--input", "-"],
         input=json.dumps(payload),
@@ -299,7 +299,7 @@ def create_pending_review(pr: PRInfo, findings: List[Finding], signature: str) -
 
     if result.returncode != 0:
         error_msg = result.stderr.strip()
-        # Try to parse the error for a better message
+        # Try to parse the error body for a clearer message
         try:
             err_data = json.loads(result.stdout)
             if "message" in err_data:
@@ -316,13 +316,6 @@ def create_pending_review(pr: PRInfo, findings: List[Finding], signature: str) -
         print("  - PR is closed or merged", file=sys.stderr)
         print("  - gh CLI not authenticated (run: gh auth login)", file=sys.stderr)
         return False
-
-    # Parse response
-    try:
-        review_data = json.loads(result.stdout)
-        review_id = review_data.get("id", "unknown")
-    except json.JSONDecodeError:
-        review_id = "unknown"
 
     return True
 
@@ -410,8 +403,9 @@ def main():
 
     print(f"🔗 PR #{pr.number}: {pr.url}")
 
-    # Confirm PR number with user (unless --all or --dry-run)
-    if not args.post_all and not args.dry_run:
+    # Confirm PR number with user (unless running non-interactively)
+    non_interactive = args.post_all or args.dry_run or args.findings is not None
+    if not non_interactive:
         try:
             confirm = input(f"\nPost comments to PR #{pr.number}? [y/N] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
