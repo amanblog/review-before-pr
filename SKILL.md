@@ -122,6 +122,14 @@ After reading the diff but before finalizing your analysis, proactively gather c
    - If API endpoints change, verify client code compatibility
    - If types change, check for breaking changes in dependents
 
+5. **Trigger-based searches** (only when the pattern appears in the diff — see the full trigger table in `references/REVIEW_CHECKLIST.md`):
+   - **Hardcoded values**: If the diff contains hardcoded colors, strings, or URLs → search for existing constants/config/token files
+   - **Service instantiation**: If the diff creates `new AxiosRestService()` or similar → search for a shared singleton instance file
+   - **New hooks/utils**: If a new hook or utility is added → search for similar existing implementations
+   - **API integration replacing mocks**: If the diff adds real API calls → check same module for leftover mock files/constants
+   - **i18n files modified**: If translation JSON files are touched → scan for duplicate keys
+   - **Filters/pickers in UI**: If a filter or state toggle is added → check all sibling data components for consistency
+
 This prevents "missing context" errors where you flag issues that are actually handled elsewhere in the codebase.
 
 ### Step 3: Produce the review document
