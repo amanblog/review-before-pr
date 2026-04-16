@@ -21,8 +21,7 @@ import os
 import re
 import subprocess
 import sys
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import List, Optional
 
 
@@ -170,9 +169,14 @@ def parse_review_markdown(filepath: str) -> List[Finding]:
                 if ":" in ref:
                     parts = ref.rsplit(":", 1)
                     file_path = parts[0].strip()
-                    try:
-                        line_num = int(parts[1].strip())
-                    except ValueError:
+                    line_part = parts[1].strip()
+                    # Handle ranges like "174-193" or "174–193" (en-dash):
+                    # extract the first number as the comment anchor line.
+                    line_match = re.match(r"(\d+)", line_part)
+                    if line_match:
+                        line_num = int(line_match.group(1))
+                    else:
+                        # No number found after colon — treat whole ref as path
                         file_path = ref.strip()
                 else:
                     file_path = ref.strip()
@@ -245,6 +249,73 @@ def select_findings(findings: List[Finding]) -> List[Finding]:
             print("Invalid input. Enter 'all', 'critical', 'high', numbers like '1,3,5', or 'skip'.")
 
 
+def get_diff_valid_lines(pr: PRInfo) -> dict:
+    """Fetch the PR diff and parse valid right-side line numbers per file.
+
+    Returns a dict mapping file paths to sorted lists of line numbers that
+    appear in the diff (both changed and context lines). GitHub only allows
+    inline review comments on lines visible in the diff view.
+    """
+    result = run_gh(["pr", "diff", str(pr.number)], check=False)
+    if result.returncode != 0:
+        return {}
+
+    valid: dict = {}  # {file_path: [line_numbers]}
+    current_file = None
+    right_line = 0
+
+    hunk_header = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+
+    for line in result.stdout.splitlines():
+        if line.startswith("diff --git "):
+            current_file = None
+            continue
+        if line.startswith("+++ b/"):
+            current_file = line[6:]
+            if current_file not in valid:
+                valid[current_file] = []
+            continue
+        if line.startswith("--- "):
+            continue
+
+        m = hunk_header.match(line)
+        if m:
+            right_line = int(m.group(1))
+            continue
+
+        if current_file is None:
+            continue
+
+        # Context line (unchanged) or added line — both are valid for comments
+        if not line.startswith("-"):
+            valid[current_file].append(right_line)
+            right_line += 1
+        # Deleted lines ("-") don't increment the right-side counter
+
+    return valid
+
+
+def resolve_line_to_diff(line_num: int, valid_lines: List[int]) -> Optional[int]:
+    """Snap a line number to the nearest valid diff line.
+
+    Returns the closest line in valid_lines, or None if valid_lines is empty.
+    """
+    if not valid_lines:
+        return None
+    if line_num in valid_lines:
+        return line_num
+
+    # Binary-search-style: find the nearest
+    best = None
+    best_dist = float("inf")
+    for vl in valid_lines:
+        dist = abs(vl - line_num)
+        if dist < best_dist:
+            best_dist = dist
+            best = vl
+    return best
+
+
 def create_pending_review(pr: PRInfo, findings: List[Finding], signature: str) -> bool:
     """Create a PENDING review on the PR with inline comments via gh api.
 
@@ -254,6 +325,9 @@ def create_pending_review(pr: PRInfo, findings: List[Finding], signature: str) -
     """
     comments = []
     skipped = []
+
+    # Fetch valid diff lines to resolve comment positions
+    diff_lines = get_diff_valid_lines(pr)
 
     for f in findings:
         if not f.file_path:
@@ -265,9 +339,28 @@ def create_pending_review(pr: PRInfo, findings: List[Finding], signature: str) -
             skipped.append(f)
             continue
 
+        # Resolve line to a valid position in the diff
+        resolved_line = f.line
+        file_valid = diff_lines.get(f.file_path, [])
+        if file_valid:
+            resolved = resolve_line_to_diff(f.line, file_valid)
+            if resolved is None:
+                print(f"⚠️  Skipping finding #{f.number} — no diff lines found for {f.file_path}.", file=sys.stderr)
+                skipped.append(f)
+                continue
+            if resolved != f.line:
+                print(f"ℹ️  Finding #{f.number}: line {f.line} not in diff, snapped to line {resolved}.", file=sys.stderr)
+            resolved_line = resolved
+        elif diff_lines:
+            # We have diff data but this file isn't in it
+            print(f"⚠️  Skipping finding #{f.number} — {f.file_path} not found in PR diff.", file=sys.stderr)
+            skipped.append(f)
+            continue
+        # If diff_lines is empty (fetch failed), try posting with the original line as a best-effort
+
         comment: dict = {
             "path": f.file_path,
-            "line": f.line,
+            "line": resolved_line,
             "side": "RIGHT",  # comment on the new (right) side of the diff
             "body": format_comment_body(f, signature),
         }
