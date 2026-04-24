@@ -249,18 +249,22 @@ def select_findings(findings: List[Finding]) -> List[Finding]:
             print("Invalid input. Enter 'all', 'critical', 'high', numbers like '1,3,5', or 'skip'.")
 
 
-def get_diff_valid_lines(pr: PRInfo) -> dict:
-    """Fetch the PR diff and parse valid right-side line numbers per file.
+def get_diff_valid_lines(pr: PRInfo) -> tuple:
+    """Fetch the PR diff and parse right-side line numbers per file.
 
-    Returns a dict mapping file paths to sorted lists of line numbers that
-    appear in the diff (both changed and context lines). GitHub only allows
-    inline review comments on lines visible in the diff view.
+    Returns (valid_lines, added_lines):
+      - valid_lines: {file_path: [line_numbers]} for every line visible on the
+        right side of the diff (context + added). GitHub only allows inline
+        review comments on lines visible in the diff view.
+      - added_lines: {file_path: [line_numbers]} limited to lines starting with
+        "+", used as a fallback anchor for findings that don't specify a line.
     """
     result = run_gh(["pr", "diff", str(pr.number)], check=False)
     if result.returncode != 0:
-        return {}
+        return {}, {}
 
     valid: dict = {}  # {file_path: [line_numbers]}
+    added: dict = {}  # {file_path: [added_line_numbers]}
     current_file = None
     right_line = 0
 
@@ -272,8 +276,8 @@ def get_diff_valid_lines(pr: PRInfo) -> dict:
             continue
         if line.startswith("+++ b/"):
             current_file = line[6:]
-            if current_file not in valid:
-                valid[current_file] = []
+            valid.setdefault(current_file, [])
+            added.setdefault(current_file, [])
             continue
         if line.startswith("--- "):
             continue
@@ -286,13 +290,18 @@ def get_diff_valid_lines(pr: PRInfo) -> dict:
         if current_file is None:
             continue
 
-        # Context line (unchanged) or added line — both are valid for comments
-        if not line.startswith("-"):
+        if line.startswith("+"):
+            # Added line
+            valid[current_file].append(right_line)
+            added[current_file].append(right_line)
+            right_line += 1
+        elif not line.startswith("-"):
+            # Context line (unchanged)
             valid[current_file].append(right_line)
             right_line += 1
         # Deleted lines ("-") don't increment the right-side counter
 
-    return valid
+    return valid, added
 
 
 def resolve_line_to_diff(line_num: int, valid_lines: List[int]) -> Optional[int]:
@@ -327,36 +336,54 @@ def create_pending_review(pr: PRInfo, findings: List[Finding], signature: str) -
     skipped = []
 
     # Fetch valid diff lines to resolve comment positions
-    diff_lines = get_diff_valid_lines(pr)
+    diff_lines, added_lines = get_diff_valid_lines(pr)
 
     for f in findings:
         if not f.file_path:
             skipped.append(f)
             continue
 
-        if f.line is None:
-            print(f"⚠️  Skipping finding #{f.number} — no line number (cannot place inline comment).", file=sys.stderr)
-            skipped.append(f)
-            continue
-
-        # Resolve line to a valid position in the diff
-        resolved_line = f.line
         file_valid = diff_lines.get(f.file_path, [])
-        if file_valid:
-            resolved = resolve_line_to_diff(f.line, file_valid)
-            if resolved is None:
-                print(f"⚠️  Skipping finding #{f.number} — no diff lines found for {f.file_path}.", file=sys.stderr)
+        file_added = added_lines.get(f.file_path, [])
+
+        if f.line is None:
+            # No line specified — anchor to the file's first added line (or
+            # first valid diff line as a fallback). This keeps review posting
+            # non-fatal for findings the model wrote without a line number,
+            # so the caller does not have to rewrite the review file and retry.
+            if file_added:
+                resolved_line = file_added[0]
+                print(f"ℹ️  Finding #{f.number}: no line given — anchored file-wide at first added line {resolved_line} in {f.file_path}.", file=sys.stderr)
+            elif file_valid:
+                resolved_line = file_valid[0]
+                print(f"ℹ️  Finding #{f.number}: no line given — anchored file-wide at line {resolved_line} in {f.file_path}.", file=sys.stderr)
+            elif diff_lines:
+                print(f"⚠️  Skipping finding #{f.number} — {f.file_path} not found in PR diff.", file=sys.stderr)
                 skipped.append(f)
                 continue
-            if resolved != f.line:
-                print(f"ℹ️  Finding #{f.number}: line {f.line} not in diff, snapped to line {resolved}.", file=sys.stderr)
-            resolved_line = resolved
-        elif diff_lines:
-            # We have diff data but this file isn't in it
-            print(f"⚠️  Skipping finding #{f.number} — {f.file_path} not found in PR diff.", file=sys.stderr)
-            skipped.append(f)
-            continue
-        # If diff_lines is empty (fetch failed), try posting with the original line as a best-effort
+            else:
+                # Diff fetch failed entirely; we can't anchor a lineless comment.
+                print(f"⚠️  Skipping finding #{f.number} — no line number and PR diff unavailable.", file=sys.stderr)
+                skipped.append(f)
+                continue
+        else:
+            # Resolve line to a valid position in the diff
+            resolved_line = f.line
+            if file_valid:
+                resolved = resolve_line_to_diff(f.line, file_valid)
+                if resolved is None:
+                    print(f"⚠️  Skipping finding #{f.number} — no diff lines found for {f.file_path}.", file=sys.stderr)
+                    skipped.append(f)
+                    continue
+                if resolved != f.line:
+                    print(f"ℹ️  Finding #{f.number}: line {f.line} not in diff, snapped to line {resolved}.", file=sys.stderr)
+                resolved_line = resolved
+            elif diff_lines:
+                # We have diff data but this file isn't in it
+                print(f"⚠️  Skipping finding #{f.number} — {f.file_path} not found in PR diff.", file=sys.stderr)
+                skipped.append(f)
+                continue
+            # If diff_lines is empty (fetch failed), try posting with the original line as a best-effort
 
         comment: dict = {
             "path": f.file_path,

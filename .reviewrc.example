@@ -39,5 +39,32 @@
   "multiPass": {
     "enabled": true,
     "skipBelowLines": 100
+  },
+  "projectConventions": {
+    "_comment": "Repo-specific hints the reviewer should prefer. Leave arrays empty if not applicable. The reviewer flags when the diff reinvents anything listed here.",
+    "preferredComponents": {
+      "_comment": "Canonical shared components. If the diff builds a custom version of one of these, flag it.",
+      "Button": "CustomButton",
+      "Table": "CustomTable",
+      "Dialog": "Dialog",
+      "InfoRow": "InfoRow"
+    },
+    "singletons": [
+      "shared/services/instance"
+    ],
+    "helpers": {
+      "_comment": "Canonical helpers that frequently get reimplemented inline.",
+      "isRtl": "isArabicLocale",
+      "socialHref": "buildSocialHref"
+    },
+    "constants": [
+      "STORE_DOMAIN",
+      "CURRENCY_OPTIONS",
+      "CourseSortBy"
+    ],
+    "locales": ["en", "ar"],
+    "isNextJs": false,
+    "importStyle": "absolute",
+    "pathAlias": "@/"
   }
 }

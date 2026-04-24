@@ -50,87 +50,45 @@ git --no-pager diff <base-branch>..<feature-branch> > .review/diff.txt
 
 If the user already provided a diff (pasted or attached), skip to Step 2.
 
-### Step 1.5: Load Configuration (NEW)
+### Step 1.5: Load configuration
 
-Before analyzing, check for a `.reviewrc` configuration file in the project root:
+Before analyzing, check for a `.reviewrc` at the project root. The diff script already loads general settings (ignore patterns, secret detection). The reviewer should additionally read the optional **`projectConventions`** block and use it as authoritative repo-specific hints:
 
-```bash
-# Check if config exists
-if [ -f .reviewrc ]; then
-  # Config is already loaded by the diff script
-  # Review settings are available for customization
-fi
-```
+- `preferredComponents` — e.g. `{ "Button": "CustomButton", "Table": "CustomTable" }`. Flag when the diff builds a custom version of one of these instead of reusing.
+- `singletons` — shared service instances the diff should import (e.g. `shared/services/instance`).
+- `helpers` — canonical helpers that frequently get reimplemented inline (e.g. `isArabicLocale`, `buildSocialHref`).
+- `constants` — shared constants / enums the diff should use instead of raw values (e.g. `STORE_DOMAIN`, `CourseSortBy`).
+- `locales` — configured locale codes. Hardcoded user-visible strings need translations in **all** of these.
+- `isNextJs` — if `false`, flag `'use client'` directives as no-ops.
+- `importStyle` / `pathAlias` — `"absolute"` + `"@/"` means relative `../../` imports in the diff should be flagged.
 
-The configuration file allows users to:
+See `.reviewrc.example` for the full shape. If `projectConventions` is absent, apply the same checks generically using repo inspection (grep for `custom-*.tsx`, check `shared/services/`, etc).
 
-- Customize ignore patterns
-- Enable/disable secret detection
-- Set review categories
-- Configure output format
-- Control metrics tracking
+### Step 2: Scan-first, then deep-dive
 
-### Step 2: Analyze the diff
+Load the checklist at **`references/REVIEW_CHECKLIST.md`** — it opens with a **Scan-First Trigger Matrix** organized by area (styling/tokens, component reuse, types, i18n, React, data fetching, routing, auth flows, forms, performance, mobile, empty states, security, dead code, monorepo, repetition).
 
-First, read the checklist at **`references/REVIEW_CHECKLIST.md`** (relative to this skill's directory) to load the review categories. This checklist follows Google, Meta, and Microsoft engineering standards with explicit priority syntax and few-shot examples.
+**Pass 1 — trigger scan (cheap, covers ~80% of findings):** scan the diff once against the trigger matrix. For each trigger that matches, run the prescribed check and file a finding. The trigger list is ordered to front-load the patterns that appear in real PR reviews — don't skip rows because they look obvious; the obvious ones are what reviewers most often miss.
 
-Then review the diff using the applicable sections (frontend, backend, or general as appropriate for the repo). Focus on:
+**Pass 2 — deep read:** read the diff file by file and flag anything the trigger pass didn't catch. Stay disciplined: skip "naming could be clearer" or "add a comment here" unless it materially blocks understanding. The checklist's "General principles" section is for your mental posture, not for filing generic findings.
 
-- **Design** — Do the changes fit the codebase? Do they integrate well with the rest of the system? Is complexity justified? ([Google eng-practices](https://google.github.io/eng-practices/review/reviewer/looking-for.html))
-- **Functionality** — Does the code do what was intended? Edge cases, concurrency/races, and off-by-one or wrong conditions.
-- **Security** — No secrets in code; input validated/sanitized; auth/authz respected; no XSS/injection vectors.
-- **Complexity** — Code as simple as needed; no over-engineering for hypothetical future needs.
-- **Tests** — Adequate tests for the change; tests are correct and maintainable.
-- **Naming & comments** — Clear names; comments explain _why_ where needed, not _what_.
-- **Style & consistency** — Matches existing patterns and style guide; no unrelated style churn in the same change.
-- **Documentation** — If behavior or APIs change, docs updated.
-- **Context** — Consider the full file and system; flag if the change degrades overall code health.
+**Large diffs (5,000+ lines):** summarize findings by file or module rather than line-by-line. Prioritize Critical and High; group Mediums by theme. Note in the review doc that a full line-by-line review wasn't feasible.
 
-For **frontend** repos, also consider: semantic HTML, CSS practices, JS/React patterns (hooks, keys, async cleanup), accessibility, i18n, and bundle/performance. For **backend**, consider: idempotency, transactions, input validation, error mapping, and logging. Use the checklist in `references/REVIEW_CHECKLIST.md` (same skill directory) for the relevant stack.
+### Step 2.5: Context gathering (trigger-driven)
 
-**Large diffs (5,000+ lines):** Summarize findings by file or module rather than reviewing line-by-line. Prioritize critical and high-priority items; group medium-priority items by theme. Note in the review doc that a full line-by-line review was not feasible due to diff size.
+The trigger matrix tells you *when* to search; this step tells you *how*. For every trigger that matches, search the repo before filing the finding — if the "missing" thing already exists elsewhere, don't flag it; if it's truly absent, the finding is sharper with the concrete reference.
 
-### Step 2.5: Context Gathering (NEW)
+- **Changed export signatures** — grep every call site. Do they pass the new param / handle the new field?
+- **New component / hook / util** — search for `preferredComponents` names from `.reviewrc`; search for files matching `custom-*.tsx`, `shared/components/*`, `packages/*` in a monorepo.
+- **New service instance** — grep for `shared/services/instance` (or whatever the `.reviewrc.singletons` entry names).
+- **Tailwind arbitrary values** — grep the repo's theme / tokens file for the actual value, so you can suggest the correct token name.
+- **New user-visible string** — grep the `en/*.json` locale file for the string; if absent, flag translation gap (and in **all** `locales` from `.reviewrc`).
+- **Real API replacing mocks** — grep the same module for `mock-*`, `MOCK_*`, `DUMMY_*` that should be deleted.
+- **i18n JSON edited** — scan the same file for duplicate keys (later wins silently).
+- **Filters / pickers added** — check sibling data components in the same page: do they all respect the new filter?
+- **Monorepo change** — before adding to `apps/X/`, check `packages/*` and other `apps/*` for an existing implementation.
 
-After reading the diff but before finalizing your analysis, proactively gather context:
-
-1. **Identify modified exports**: Search for changed function/type signatures
-
-   ```
-   Example: If diff shows "export function getUser(id: string, includeDeleted: boolean)"
-   Action: Search codebase for "getUser(" to find all call sites
-   Check: Do they pass the new boolean parameter?
-   ```
-
-2. **Find call sites**: Use grep/search to find where modified functions are used
-
-   ```bash
-   # Search for function usage
-   grep -r "functionName(" --include="*.ts" --include="*.tsx"
-   ```
-
-3. **Check related files**: Read middleware, schemas, tests related to changes
-
-   ```
-   Example: If auth.ts changes, read:
-   - src/middleware/auth.ts (likely uses these functions)
-   - src/auth/__tests__/auth.test.ts (test coverage)
-   ```
-
-4. **Gather architecture context**: Understand the broader system
-   - If database models change, check for migrations
-   - If API endpoints change, verify client code compatibility
-   - If types change, check for breaking changes in dependents
-
-5. **Trigger-based searches** (only when the pattern appears in the diff — see the full trigger table in `references/REVIEW_CHECKLIST.md`):
-   - **Hardcoded values**: If the diff contains hardcoded colors, strings, or URLs → search for existing constants/config/token files
-   - **Service instantiation**: If the diff creates `new AxiosRestService()` or similar → search for a shared singleton instance file
-   - **New hooks/utils**: If a new hook or utility is added → search for similar existing implementations
-   - **API integration replacing mocks**: If the diff adds real API calls → check same module for leftover mock files/constants
-   - **i18n files modified**: If translation JSON files are touched → scan for duplicate keys
-   - **Filters/pickers in UI**: If a filter or state toggle is added → check all sibling data components for consistency
-
-This prevents "missing context" errors where you flag issues that are actually handled elsewhere in the codebase.
+This prevents false-positive findings where the "missing" thing actually exists and the diff should just use it.
 
 ### Step 3: Produce the review document
 
@@ -146,6 +104,13 @@ Create **one markdown file**. By default write it under **`.review/`** so it is 
 - All suggested fixes go **inside the markdown document** as fenced code blocks.
 - Do **not** edit the user's source files unless they explicitly ask you to apply a fix.
 - Each finding: **File**, **Issue**, and **Suggested change** (code snippet in the doc).
+
+**Rules for the `**File:**` reference:**
+
+- Always include a line number: `` **File:** `path/to/file.ext:42` ``.
+- For multi-line issues, use a range — the comment will anchor to the first line: `` `path/to/file.ext:42-58` ``.
+- If the finding spans multiple files, write each on its own finding or pick the primary file — the parser reads the first `` `path:line` `` reference.
+- If the finding is genuinely file-wide (no specific line), still write the file path. The posting script will anchor the PR comment to the first added line in that file from the diff, so you do not need to invent a line — but prefer a concrete line whenever one fits.
 
 ### Step 3.5: Verification Pass (Multi-pass Review)
 
